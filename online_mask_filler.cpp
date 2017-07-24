@@ -3,7 +3,11 @@
 #include "rf_kernels.hpp"
 
 using namespace std;
-using namespace rf_kernels;
+
+namespace rf_kernels {
+#if 0
+};  // pacify emacs c-mode
+#endif
 
 
 inline bool get_v1(const float *intensity, const float *weights, float &v1)
@@ -118,3 +122,6 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 	running_weights[ifreq] = rw;
     }    
 }
+
+
+}  // namespace rf_kernels
