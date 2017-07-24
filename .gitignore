@@ -1,0 +1,7 @@
+*~
+*.o
+*.so
+*.pyc
+Makefile.local
+
+test-online-mask-filler
