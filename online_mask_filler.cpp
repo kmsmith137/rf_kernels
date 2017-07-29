@@ -57,7 +57,7 @@ inline bool get_v1(const float *intensity, const float *weights, float &v1)
 //   - See "KMS" below for two more minor changes...
 void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
 		      float *intensity, const float *weights, float *running_var, float *running_weights,
-		      xorshift_plus &rand_x)
+		      xorshift_plus &rng)
 {
     const int v1_chunk = params.v1_chunk;
     const float w_clamp = params.w_clamp;
@@ -117,7 +117,7 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 	    for (int i = 0; i < v1_chunk; i++)
 	    {
 	        if (i % 8 == 0)
-	  	rand_x.gen_floats(rn);
+	  	rng.gen_floats(rn);
 		iacc[i] = (wacc[i] < w_cutoff) ? rw * iacc[i] : rn[i % 8] * scale;
 		// r = uniform random number in [-scale,scale]
 		//float r = std::uniform_real_distribution<float>(-scale,scale)(rng);

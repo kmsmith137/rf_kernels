@@ -76,7 +76,7 @@ struct online_mask_filler_params {
 
 extern void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
 			     float *intensity, const float *weights, float *running_var, float *running_weights, 
-			     xorshift_plus &rand_x);
+			     xorshift_plus &rng);
 
 
 }  // namespace rf_kernels
