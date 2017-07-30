@@ -163,17 +163,11 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
 				  _mm256_cmp_ps(w3, c, _CMP_LT_OS));
 	      
-	  // Store the new intensity values
+	  // Store the new intensity values - note that we no longer update or store the weights!
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk), res0);
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk + 8), res1);
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk + 16), res2);
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk + 24), res3);
-	      
-	  // Store the new weight values
-	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk), w);
-	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 8), w);
-	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 16), w);
-	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 24), w);
 	}
       // Since we've now completed all the variance estimation and filling for this frequency channel in this chunk, we must write our 
       // running variance and weight to the vector, which is a bit of a pain. Thanks for this hack, Kendrick!
@@ -304,12 +298,6 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	        if (i % 8 == 0)
 	  	rng.gen_floats(rn);
 		iacc[i] = (wacc[i] < w_cutoff) ? rw * iacc[i] : rn[i % 8] * scale;
-		// r = uniform random number in [-scale,scale]
-		//float r = std::uniform_real_distribution<float>(-scale,scale)(rng);
-		
-		// if unmasked, then apply running_weight
-		// if masked, then set intensity to random.
-		//iacc[i] = (wacc[i] >= w_cutoff) ? (rw * iacc[i]) : r;
 	    }
 	}
 
