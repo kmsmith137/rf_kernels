@@ -96,15 +96,15 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
     const float var_clamp_mult = params.var_clamp_mult;
     const float w_cutoff = params.w_cutoff;
 
-  __m256 tmp_var, prev_var, prev_w, w0, w1, w2, w3, i0, i1, i2, i3, res0, res1, res2, res3;
-  __m256 c = _mm256_set1_ps(w_cutoff);
-  __m256 root_three = _mm256_sqrt_ps(_mm256_set1_ps(3));
-  __m256 two = _mm256_set1_ps(2);
-  __m256 zero = _mm256_set1_ps(0.0);
+    __m256 tmp_var, prev_var, prev_w, w0, w1, w2, w3, i0, i1, i2, i3, res0, res1, res2, res3;
+    __m256 c = _mm256_set1_ps(w_cutoff);
+    __m256 root_three = _mm256_sqrt_ps(_mm256_set1_ps(3));
+    __m256 one = _mm256_set1_ps(1.0f);
+    __m256 zero = _mm256_set1_ps(0.0f);
 
 
-  // Loop over frequencies first to avoid having to write the running_var and running_weights in each iteration of the ichunk loop
-  for (int ifreq=0; ifreq<nfreq; ifreq++)
+    // Loop over frequencies first to avoid having to write the running_var and running_weights in each iteration of the ichunk loop
+    for (int ifreq=0; ifreq<nfreq; ifreq++)
     {
       // Get the previous running_var and running_weights
       prev_var = _mm256_set1_ps(running_var[ifreq]);
@@ -128,27 +128,41 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 
 	  // If pass is less than -8, we treat this as a failed v1 case (since >75% of the data is masked, we can't use that to update 
 	  // our running variance estimate). After doing the compare below, mask will contain we get a constant register that is either 
-	  // all zeros if the variance estimate failed or all ones if the variance estimate was successful.
+	  // all zeros if the variance estimate failed or all ones if the variance estimate was successful
 	  __m256 mask = _mm256_cmp_ps(npass, _mm256_set1_ps(-8.1), _CMP_LT_OS);
+
+	  // If the running weight is 0, we want to set the running variance to the next successful v1 estimate and the running weight
+	  // to w_clamp. To do this, make this mask rw_check that is all ones if prev_w is <= 0.0f.
+	  __m256 rw_check = _mm256_cmp_ps(prev_w, zero, _CMP_LE_OS);
 	      
 	  // Here, we do the variance computation:
 	  tmp_var = var_est(w0, w1, w2, w3, i0, i1, i2, i3);
-	  
-	  // Then, use update rules to update value we'll eventually set as our running variance (prevent it from changing too much)
-	  tmp_var = update_var(tmp_var, prev_var, var_weight, var_clamp_add, var_clamp_mult, mask);
-	  prev_var = tmp_var;
 
-	  // Finally, mask fill with the running variance -- if weights less than cutoff, fill
-	  res0 = _mm256_blendv_ps(i0, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w0, c, _CMP_LT_OS));
-	  res1 = _mm256_blendv_ps(i1, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w1, c, _CMP_LT_OS));
-	  res2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w2, c, _CMP_LT_OS));
-	  res3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w3, c, _CMP_LT_OS));
-	      
+	  // Then, use update rules to update value we'll eventually set as our running variance (prevent it from changing too much)
+	  prev_var = update_var(tmp_var, prev_var, var_weight, var_clamp_add, var_clamp_mult, mask);
+
 	  // We also need to modify the weight values
 	  __m256 w = _mm256_blendv_ps(_mm256_set1_ps(-w_clamp), _mm256_set1_ps(w_clamp), mask);    // either +w_clamp or -w_clamp
-	  w = _mm256_min_ps(_mm256_max_ps(_mm256_add_ps(w, prev_w), zero), two);
-	  prev_w = w;
+	  w = _mm256_min_ps(_mm256_max_ps(_mm256_add_ps(w, prev_w), zero), one);
 
+	  // Update the running variance and running weights based on rw_check
+	  prev_var = _mm256_blendv_ps(prev_var, tmp_var, rw_check);
+	  prev_w = _mm256_blendv_ps(w, _mm256_set1_ps(w_clamp), rw_check);
+
+	  // Finally, mask fill with the running variance -- if weights less than cutoff, fill
+	  res0 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i0), 
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				  _mm256_cmp_ps(w0, c, _CMP_LT_OS));
+	  res1 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i1),
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				  _mm256_cmp_ps(w1, c, _CMP_LT_OS));
+	  res2 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i2), 
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))),
+				  _mm256_cmp_ps(w2, c, _CMP_LT_OS));
+	  res3 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i3), 
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				  _mm256_cmp_ps(w3, c, _CMP_LT_OS));
+	      
 	  // Store the new intensity values
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk), res0);
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk + 8), res1);
@@ -156,10 +170,10 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk + 24), res3);
 	      
 	  // Store the new weight values
-	  _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk), w);
-	  _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 8), w);
-	  _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 16), w);
-	  _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 24), w);
+	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk), w);
+	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 8), w);
+	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 16), w);
+	  // _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 24), w);
 	}
       // Since we've now completed all the variance estimation and filling for this frequency channel in this chunk, we must write our 
       // running variance and weight to the vector, which is a bit of a pain. Thanks for this hack, Kendrick!
