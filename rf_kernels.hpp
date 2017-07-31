@@ -1,4 +1,5 @@
 #include <random>
+#include <stdexcept>
 #include "immintrin.h"
 
 #ifndef _RF_KERNELS_HPP
@@ -14,10 +15,37 @@ namespace rf_kernels {
 #endif
 
 
+inline bool is_aligned(const void *ptr, uintptr_t nbytes)
+{
+    // According to C++11 spec, "uintptr_t" is an unsigned integer type
+    // which is guaranteed large enough to represent a pointer.
+    return (uintptr_t(ptr) % nbytes) == 0;
+}
+
+
 // -------------------------------------------------------------------------------------------------
 // Class for random number generation
 // Generates eight random 32-bit floats using a vectorized implementation of xorshift+
-// between (-1, 1)
+// between (-1, 1).
+//
+// Note: the vec_xorshift_plus must be "aligned", in the sense that the memory addresses of
+// its 's0' and 's1' members lie on 32-byte boundaries.  Otherwise, a segfault will result!
+// To protect against this, the vec_xorshift_constructors now test for alignedness, and throw 
+// an exception if unaligned.
+//
+// The compiler is supposed to ensure that the vec_xorshift_plus is always aligned, so if you
+// do get an "unaligned vec_xorshift_plus" exception, then the compiler's alignment logic
+// is being defeated somehow.  One way this can happen is when constructing a std::shared_ptr<> 
+// with std::make_shared<>().  For example,
+//
+//    shared_ptr<vec_xorshift_plus> = make_shared<vec_xorshift_plus>()
+//
+// can generate either an aligned or unaligned vec_xorshift_plus.  The solution in this case
+// is to construct the shared pointer as follows:
+//
+//    shared_ptr<vec_xorshift_plus> = shared_ptr<vec_xorshift_plus> (new vec_xorshift_plus());
+
+
 struct vec_xorshift_plus
 {
     // Seed values
@@ -27,13 +55,23 @@ struct vec_xorshift_plus
     // Initialize seeds to random device
     vec_xorshift_plus()
     {
+	if (!is_aligned(&s0,32) || !is_aligned(&s1,32))
+	    throw std::runtime_error("Fatal: unaligned vec_xorshift_plus!  See discussion in rf_kernels.hpp");
+
         std::random_device rd;
 	s0 = _mm256_setr_epi64x(rd(), rd(), rd(), rd());
 	s1 = _mm256_setr_epi64x(rd(), rd(), rd(), rd());
     }
   
     // Initialize seeds to pre-defined values
-    vec_xorshift_plus(__m256i _s0, __m256i _s1) : s0(_s0), s1(_s1) {};
+    vec_xorshift_plus(__m256i _s0, __m256i _s1)
+    {
+	if (!is_aligned(&s0, 32))
+	    throw std::runtime_error("Fatal: unaligned vec_xorshift_plus!  See discussion in rf_kernels.hpp");
+
+	s0 = _s0;
+	s1 = _s1;
+    }
 
     // Generates 256 random bits (interpreted as 8 signed floats)
     // Returns an __m256 vector, so bits must be stored using _mm256_storeu_ps() intrinsic!
