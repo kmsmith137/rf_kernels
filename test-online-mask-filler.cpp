@@ -93,10 +93,8 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
       unsigned int rn6 = rd();
       unsigned int rn7 = rd();
       unsigned int rn8 = rd();
-      vec_xorshift_plus vec_rn(_mm256_setr_epi64x(1, 3, 5, 7), _mm256_setr_epi64x(2, 4, 6, 8));
-      xorshift_plus sca_rn(1, 2, 3, 4, 5, 6, 7, 8);
-      //vec_xorshift_plus vec_rn(_mm256_setr_epi64x(rn1, rn3, rn5, rn7), _mm256_setr_epi64x(rn2, rn4, rn6, rn8));
-      //xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
+      vec_xorshift_plus vec_rn(_mm256_setr_epi64x(rn1, rn3, rn5, rn7), _mm256_setr_epi64x(rn2, rn4, rn6, rn8));
+      xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
       online_mask_filler_params params{};    
 
       // Process away! Note that the double instances of nt_chunk are for the "stride" parameter which is equal to nt_chunk for this test

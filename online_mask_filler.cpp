@@ -206,7 +206,7 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 //
 //   - See "KMS" below for two more minor changes...
 
-inline bool get_v1(const float *intensity, const float *weights, float &v1, bool print)
+inline bool get_v1(const float *intensity, const float *weights, float &v1)
 {
     int zerocount = 0;
     float vsum = 0;
@@ -224,8 +224,6 @@ inline bool get_v1(const float *intensity, const float *weights, float &v1, bool
     wsum = max(wsum, 1.0f);
     
     // Check whether enough valid values were passed
-    if (print)
-      cout << zerocount << endl;
     if (zerocount >= 23.9)
     {
         v1 = 0;
@@ -263,10 +261,7 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	    float *iacc = &intensity[ifreq*stride + ichunk];
 	    const float *wacc = &weights[ifreq*stride + ichunk];
 	    
-	    bool print = false;
-	    if (ifreq==0 && ichunk ==0)
-	      print = false;
-	    if (!get_v1(iacc, wacc, v1, print))
+	    if (!get_v1(iacc, wacc, v1))
 	    {
 	        // For an unsuccessful v1, we decrease the weight if possible. We do not modify the running variance
 	        rw = max(0.0f, rw - w_clamp);
