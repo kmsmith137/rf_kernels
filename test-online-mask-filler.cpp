@@ -1,3 +1,6 @@
+// g++ -std=c++11 -Wall -O3 -L. -L$HOME/lib -lrf_kernels -march=native -o test-online-mask-filler test-online-mask-filler.cpp
+// if export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$HOME/lib
+
 #include <iostream>
 #include <cassert>
 #include <random>
@@ -90,38 +93,19 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
       unsigned int rn6 = rd();
       unsigned int rn7 = rd();
       unsigned int rn8 = rd();
-      vec_xorshift_plus vec_rn(_mm256_setr_epi64x(rn1, rn3, rn5, rn7), _mm256_setr_epi64x(rn2, rn4, rn6, rn8));
-      xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
-
+      vec_xorshift_plus vec_rn(_mm256_setr_epi64x(1, 3, 5, 7), _mm256_setr_epi64x(2, 4, 6, 8));
+      xorshift_plus sca_rn(1, 2, 3, 4, 5, 6, 7, 8);
+      //vec_xorshift_plus vec_rn(_mm256_setr_epi64x(rn1, rn3, rn5, rn7), _mm256_setr_epi64x(rn2, rn4, rn6, rn8));
+      //xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
       online_mask_filler_params params{};    
-
-
-      // struct online_mask_filler_params {
-      // 	int v1_chunk = 32;
-      // 	float var_weight = 2.0e-3;      // running_variance decay constant
-      // 	float var_clamp_add = 1.0e-10;  // max allowed additive change in running_variance per v1_chunk (setting to a small value disables)
-      // 	float var_clamp_mult = 3.3e-3;  // max allowed fractional change in running_variance per v1_chunk
-      // 	float w_clamp = 3.3e-3;         // change in running_weight (either positive or negative) per v1_chunk
-      // 	float w_cutoff = 0.5;           // threshold weight below which intensity is considered masked
-      // };
 
       // Process away! Note that the double instances of nt_chunk are for the "stride" parameter which is equal to nt_chunk for this test
       float *running_weights_arr = &running_weights[0];
       float *running_var_arr = &running_var[0];
-
+      float *running_weights_arr2 = &running_weights2[0];
+      float *running_var_arr2 = &running_var2[0];
       online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, running_var_arr, running_weights_arr, vec_rn);
-      scalar_online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, running_var_arr, running_weights_arr, sca_rn);
-      //mask_filler(intensity, weights, &running_var, &running_weights, nt_chunk, nt_chunk, w_cutoff, w_clamp, var_clamp_add, var_clamp_mult, var_weight, nfreq, vec_rn);
-      //scalar_mask_fill(32, intensity2, weights2, running_var2, running_weights2, nt_chunk, nfreq, nt_chunk, w_cutoff, w_clamp, var_clamp_add, var_clamp_mult, var_weight, sca_rn);
-
-      // void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-      // 			   float *intensity, const float *weights, float *running_var, float *running_weights,
-      // 			   vec_xorshift_plus &rng)
-      
-      // void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-      // 			     float *intensity, const float *weights, float *running_var, float *running_weights,
-      // 			     xorshift_plus &rng)
-
+      scalar_online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity2, weights2, running_var_arr2, running_weights_arr2, sca_rn);
 
       // I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be helpful
       // for debugging any future errors! So it's easy to see where things have gone wrong!

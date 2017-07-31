@@ -102,7 +102,6 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
     __m256 one = _mm256_set1_ps(1.0f);
     __m256 zero = _mm256_set1_ps(0.0f);
 
-
     // Loop over frequencies first to avoid having to write the running_var and running_weights in each iteration of the ichunk loop
     for (int ifreq=0; ifreq<nfreq; ifreq++)
     {
@@ -207,7 +206,7 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 //
 //   - See "KMS" below for two more minor changes...
 
-inline bool get_v1(const float *intensity, const float *weights, float &v1)
+inline bool get_v1(const float *intensity, const float *weights, float &v1, bool print)
 {
     int zerocount = 0;
     float vsum = 0;
@@ -225,6 +224,8 @@ inline bool get_v1(const float *intensity, const float *weights, float &v1)
     wsum = max(wsum, 1.0f);
     
     // Check whether enough valid values were passed
+    if (print)
+      cout << zerocount << endl;
     if (zerocount >= 23.9)
     {
         v1 = 0;
@@ -262,7 +263,10 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	    float *iacc = &intensity[ifreq*stride + ichunk];
 	    const float *wacc = &weights[ifreq*stride + ichunk];
 	    
-	    if (!get_v1(iacc, wacc, v1))
+	    bool print = false;
+	    if (ifreq==0 && ichunk ==0)
+	      print = false;
+	    if (!get_v1(iacc, wacc, v1, print))
 	    {
 	        // For an unsuccessful v1, we decrease the weight if possible. We do not modify the running variance
 	        rw = max(0.0f, rw - w_clamp);
@@ -296,8 +300,9 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	    for (int i = 0; i < v1_chunk; i++)
 	    {
 	        if (i % 8 == 0)
-	  	rng.gen_floats(rn);
-		iacc[i] = (wacc[i] < w_cutoff) ? rw * iacc[i] : rn[i % 8] * scale;
+		    rng.gen_floats(rn);
+
+		iacc[i] = (wacc[i] < w_cutoff) ? rn[i % 8] * scale : rw * iacc[i];
 	    }
 	}
 
