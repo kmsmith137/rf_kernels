@@ -87,14 +87,17 @@ inline __m256 update_var(__m256 tmp_var, __m256 prev_var, float var_weight, floa
 
 
 void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-			   float *intensity, const float *weights, float *running_var, float *running_weights,
-			   vec_xorshift_plus &rng)
+		      float *intensity, const float *weights, float *running_var, float *running_weights,
+		      __m256i *rng_state_s0, __m256i *rng_state_s1)
 {
     const float w_clamp = params.w_clamp;
     const float var_weight = params.var_weight;
     const float var_clamp_add = params.var_clamp_add;
     const float var_clamp_mult = params.var_clamp_mult;
     const float w_cutoff = params.w_cutoff;
+    
+    // Construct our random number generator object on the stack! 
+    vec_xorshift_plus rng(rng_state_s0, rng_state_s1);
 
     __m256 tmp_var, prev_var, prev_w, w0, w1, w2, w3, i0, i1, i2, i3, res0, res1, res2, res3;
     __m256 c = _mm256_set1_ps(w_cutoff);
@@ -186,6 +189,9 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
       *j = _mm_extract_ps(z, 0);
     }
 
+    // Now that we're done, write out the new state of the random number generator back to the stack! 
+    *rng_state_s0 = rng.get_s0();
+    *rng_state_s1 = rng.get_s1();
 }
 
 
