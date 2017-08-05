@@ -94,8 +94,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
       unsigned int rn7 = rd();
       unsigned int rn8 = rd();
 
-      __m256i rng_state_s0 = _mm256_setr_epi64x(rn1, rn3, rn5, rn7);
-      __m256i rng_state_s1 = _mm256_setr_epi64x(rn2, rn4, rn6, rn8);
+      uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
       xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
       online_mask_filler_params params{};    
 
@@ -104,7 +103,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
       float *running_var_arr = &running_var[0];
       float *running_weights_arr2 = &running_weights2[0];
       float *running_var_arr2 = &running_var2[0];
-      online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, running_var_arr, running_weights_arr, &rng_state_s0, &rng_state_s1);
+      online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, running_var_arr, running_weights_arr, rng_state);
       scalar_online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity2, weights2, running_var_arr2, running_weights_arr2, sca_rn);
 
       // I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be helpful
@@ -169,7 +168,9 @@ inline bool test_xorshift(int niter=10000)
 	unsigned int rn7 = rd();
 	unsigned int rn8 = rd();
 	
-	vec_xorshift_plus a(_mm256_setr_epi64x(rn1, rn3, rn5, rn7), _mm256_setr_epi64x(rn2, rn4, rn6, rn8));
+	uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
+	vec_xorshift_plus a(rng_state);
+	//	vec_xorshift_plus a(_mm256_setr_epi64x(rn1, rn3, rn5, rn7), _mm256_setr_epi64x(rn2, rn4, rn6, rn8));
 	float vrn_vec[8];
 	
 	xorshift_plus b(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
