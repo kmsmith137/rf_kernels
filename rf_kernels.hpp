@@ -45,7 +45,6 @@ inline bool is_aligned(const void *ptr, uintptr_t nbytes)
 //
 //    shared_ptr<vec_xorshift_plus> = shared_ptr<vec_xorshift_plus> (new vec_xorshift_plus());
 
-
 struct vec_xorshift_plus
 {
     // Seed values
@@ -55,7 +54,7 @@ struct vec_xorshift_plus
     // Initialize seeds to random device
     vec_xorshift_plus()
     {
-	if (!is_aligned(&s0,32) || !is_aligned(&s1,32))
+	if (!is_aligned(&s0, 32) || !is_aligned(&s1, 32))
 	    throw std::runtime_error("Fatal: unaligned vec_xorshift_plus!  See discussion in rf_kernels.hpp");
 
         std::random_device rd;
@@ -66,7 +65,7 @@ struct vec_xorshift_plus
     // Initialize seeds to pre-defined values
     vec_xorshift_plus(__m256i _s0, __m256i _s1)
     {
-        if (!is_aligned(&s0, 32))
+      if (!is_aligned(&s0, 32) || !is_aligned(&s1, 32))
           throw std::runtime_error("Fatal: unaligned vec_xorshift_plus!  See discussion in rf_kernels.hpp");
 
         s0 = _s0;
@@ -74,27 +73,23 @@ struct vec_xorshift_plus
     }
 
     // Initialize seeds to other pre-defined values
-    vec_xorshift_plus(__m256i *_s0, __m256i *_s1)
+    vec_xorshift_plus(const uint64_t rng_state[8])
     {
-	if (!is_aligned(&s0, 32))
+
+        if (!is_aligned(&s0, 32) || !is_aligned(&s1, 32))
 	    throw std::runtime_error("Fatal: unaligned vec_xorshift_plus!  See discussion in rf_kernels.hpp");
 
-	s0 = *_s0;
-	s1 = *_s1;
+        s0 = _mm256_loadu_si256((const __m256i *) &rng_state[0]);
+        s1 = _mm256_loadu_si256((const __m256i *) &rng_state[4]);   // 256-bit offset
     }
 
     
-  inline __m256i get_s0()
-  {
-    return s0;
-  }
+    inline void store_state(uint64_t rng_state[8])
+    {
+        _mm256_storeu_si256((__m256i *) &rng_state[0], s0);
+        _mm256_storeu_si256((__m256i *) &rng_state[4], s1);
+    }
 
-
-  inline __m256i get_s1()
-  {
-    return s1;
-  }
-  
     // Generates 256 random bits (interpreted as 8 signed floats)
     // Returns an __m256 vector, so bits must be stored using _mm256_storeu_ps() intrinsic!
     inline __m256 gen_floats()
@@ -237,7 +232,7 @@ struct online_mask_filler_params {
 
 extern void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
 			     float *intensity, const float *weights, float *running_var, float *running_weights, 
-			     __m256i *rng_state_s0, __m256i *rng_state_s1);
+			     uint64_t rng_state[8]);
 
 
 extern void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
