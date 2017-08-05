@@ -62,7 +62,7 @@ struct vec_xorshift_plus
 	s1 = _mm256_setr_epi64x(rd(), rd(), rd(), rd());
     }
   
-    // Initialize seeds to pre-defined values
+    // Initialize seeds to pre-defined values (dangerous if __m256is are being constructed on the heap!)
     vec_xorshift_plus(__m256i _s0, __m256i _s1)
     {
       if (!is_aligned(&s0, 32) || !is_aligned(&s1, 32))
@@ -72,7 +72,7 @@ struct vec_xorshift_plus
         s1 = _s1;
     }
 
-    // Initialize seeds to other pre-defined values
+    // Initialize or load the state from bonsai/online_mask_filler.cpp at the start of the kernel
     vec_xorshift_plus(const uint64_t rng_state[8])
     {
 
@@ -84,11 +84,13 @@ struct vec_xorshift_plus
     }
 
     
+    // Store the rng state back in to bonsai/online_mask_filler.cpp when the kernel finished executing
     inline void store_state(uint64_t rng_state[8])
     {
         _mm256_storeu_si256((__m256i *) &rng_state[0], s0);
         _mm256_storeu_si256((__m256i *) &rng_state[4], s1);
     }
+
 
     // Generates 256 random bits (interpreted as 8 signed floats)
     // Returns an __m256 vector, so bits must be stored using _mm256_storeu_ps() intrinsic!
@@ -127,7 +129,7 @@ struct xorshift_plus
 		  uint64_t _s2, uint64_t _s3, 
 		  uint64_t _s4, uint64_t _s5, 
 		  uint64_t _s6, uint64_t _s7)
-      : seeds{_s0, _s1, _s2, _s3, _s4, _s5, _s6, _s7} {};
+        : seeds{_s0, _s1, _s2, _s3, _s4, _s5, _s6, _s7} {};
 
   
     // Initialize with random_device -- for production
@@ -159,24 +161,19 @@ struct xorshift_plus
 	}
     }
 
+
+    // This exists solely for the unit test of the online mask filler!
+    // This is just gen_floats with extra pfailv1 and pallzero parameters that 
+    // dictate whether a group of 32 random numbers (which it generates at once) should result
+    // in a failed v1 estimate (i.e. >=24 weights less than the cutoff) or whether
+    // all weight values should be zero. Currently, the implementation is a little 
+    // boneheaded and can definitely be imporved...
     inline void gen_weights(float *weights, float pfailv1, float pallzero)
     {
-        // This exists solely for the unit test of the online mask filler!
-        // Essentially, this is gen_floats + 1 (to get the range right for weights)
-        // with extra pfailv1 and pallzero parameters that dictate whether a group of 
-        // 32 random numbers (it generates 32 random numbers at once) should result
-        // in a failed v1 estimate (i.e. >=24 weights less than the cutoff) or whether
-        // all weight values should be zero. Currently, the implementation is a little 
-        // boneheaded and can definitely be imporved...
-      
-        // If the first random number generated is less than pallzero * 2, we make it all zero
-        // If the first randon number generated is less than pallzero * 2 + pfailv1 * 2 but
-        // greater than pallzero * 2, we make sure the v1 fails by distributing at least 
-        // 24 zeros throughout the vector
-        // NOTE: got rid of all the factors of two, since the weights have been modified to be
-        // to be between 0 and 1!
-
-        // Else, we just fill weights randomly!
+        // If the first random number generated is less than pallzero, we make it all zero.
+        // If the first randon number generated is less than pallzero + pfailv1 but
+        // greater than pallzero, we make sure the v1 fails by distributing at least 
+        // 24 zeros throughout the vector. Else, we just fill weights randomly!
         
        for (int i=0; i<32; i+=2)
        {
@@ -229,7 +226,6 @@ struct online_mask_filler_params {
 
 // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk) with spacing 'stride' between frequency channels.
 // 'running_var' and 'running_weights' are 1D arrays of length nfreq.
-
 extern void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
 			     float *intensity, const float *weights, float *running_var, float *running_weights, 
 			     uint64_t rng_state[8]);
