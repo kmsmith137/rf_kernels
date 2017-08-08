@@ -26,8 +26,9 @@ inline bool equality_checker(float a, float b, float epsilon)
 }
 
 
-inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, float w_cutoff=0.5, float w_clamp=3e-3, float var_clamp_add=3e-3, 
-			float var_clamp_mult=3e-3, float var_weight=2e-3, int niter=10000)
+inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, bool overwrite_on_wt0, float w_cutoff=0.5, 
+			float w_clamp=3e-3, float var_clamp_add=3e-3, float var_clamp_mult=3e-3, float var_weight=2e-3, 
+			int niter=10000)
 {
     assert (nfreq * nt_chunk % 8 == 0);
     assert (nt_chunk % 8 == 0);
@@ -98,18 +99,24 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	
 	uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
 	xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
-	online_mask_filler_params params{};    
+	online_mask_filler_params params = {};
+	params.overwrite_on_wt0 = overwrite_on_wt0;
 
-	// Process away! Note that the double instances of nt_chunk are for the "stride" parameter which is equal to nt_chunk for this test
+	// Process away! Note that the double instances of nt_chunk are for the "stride" parameter which is equal to nt_chunk for 
+	// this test
 	float *running_weights_arr = &running_weights[0];
 	float *running_var_arr = &running_var[0];
 	float *running_weights_arr2 = &running_weights2[0];
 	float *running_var_arr2 = &running_var2[0];
-	online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, running_var_arr, running_weights_arr, rng_state);
-	scalar_online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity2, weights2, running_var_arr2, running_weights_arr2, sca_rn);
 
-	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be helpful
-	// for debugging any future errors! So it's easy to see where things have gone wrong!
+	online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, 
+			 running_var_arr, running_weights_arr, rng_state);
+
+	scalar_online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity2, weights2, 
+				running_var_arr2, running_weights_arr2, sca_rn);
+
+	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be 
+	// helpful for debugging any future errors! So it's easy to see where things have gone wrong!
 	for (int ifreq=0; ifreq<nfreq; ifreq++)
 	{
 	    // Check running variance
@@ -204,7 +211,8 @@ void run_online_mask_filler_unit_tests()
 {
   // Externally-visible function for unit testing
   test_xorshift();
-  test_filler(8, 32, 0.20, 0.20);
+  test_filler(8, 32, 0.20, 0.20, true);
+  test_filler(8, 32, 0.20, 0.20, false);
 }
 
 
