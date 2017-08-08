@@ -47,9 +47,11 @@ inline __m256 check_weights(__m256 w0, __m256 w1, __m256 w2, __m256 w3)
     // Returns a constant register containing the number of _successful_ weights
     __m256 zero = _mm256_set1_ps(0.0);
 
-    // Note here that _mm256_cmp_ps returns a _m256 in which groups of 8 bits are either all 1s if the cmp was true and all 0s if the cmp was false
-    // If we reinterpret this as an _m256i, we get a register in which all values are either 0 (in the case of 8 zeros) or -1 (in the case of 8 ones
-    // given that 11111111 is -1 in twos complement form). Thus, by doing an hadd at the end, we will get -1 * the number of successful intensities
+    // Note here that _mm256_cmp_ps returns a _m256 in which groups of 8 bits are either all 1s if the cmp was true and all 0s if the 
+    // cmp was false. If we reinterpret this as an _m256i, we get a register in which all values are either 0 (in the case of 8 zeros) 
+    // or -1 (in the case of 8 ones given that 11111111 is -1 in twos complement form). Thus, by doing an hadd at the end, we will get
+    // -1 * the number of successful intensities.
+
     // Note that _mm256_castps_si256 just reinterprets bits whereas _mm256_cvtepi32_ps truncates a float into an int. 
     __m256i w0_mask = _mm256_castps_si256(_mm256_cmp_ps(w0, zero, _CMP_GT_OS));
     __m256i w1_mask = _mm256_castps_si256(_mm256_cmp_ps(w1, zero, _CMP_GT_OS));
@@ -75,20 +77,22 @@ inline __m256 var_est(__m256 w0, __m256 w1, __m256 w2, __m256 w3, __m256 i0, __m
 
 inline __m256 update_var(__m256 tmp_var, __m256 prev_var, float var_weight, float var_clamp_add, float var_clamp_mult, __m256 mask)
 {
-    // Does the update of the running variance (tmp_var) by checking the exponential update (normal_upd) doesn't exceed the bounds (high/low) specified 
-    // by var_clamp_add and var_clamp_mult
+    // Does the update of the running variance (tmp_var) by checking the exponential update (normal_upd) doesn't exceed the bounds 
+    // (high/low) specified by var_clamp_add and var_clamp_mult.
     __m256 normal_upd = _mm256_fmadd_ps(_mm256_set1_ps(var_weight), tmp_var, _mm256_mul_ps(_mm256_set1_ps(1 - var_weight), prev_var)); 
-    __m256 high = _mm256_add_ps(_mm256_add_ps(prev_var, _mm256_set1_ps(var_clamp_add)), _mm256_mul_ps(prev_var, _mm256_set1_ps(var_clamp_mult))); 
-    __m256 low = _mm256_sub_ps(_mm256_sub_ps(prev_var, _mm256_set1_ps(var_clamp_add)), _mm256_mul_ps(prev_var, _mm256_set1_ps(var_clamp_mult)));     
+    __m256 high = _mm256_add_ps(_mm256_add_ps(prev_var, _mm256_set1_ps(var_clamp_add)), _mm256_mul_ps(prev_var, 
+												      _mm256_set1_ps(var_clamp_mult))); 
+    __m256 low = _mm256_sub_ps(_mm256_sub_ps(prev_var, _mm256_set1_ps(var_clamp_add)), _mm256_mul_ps(prev_var, 
+												     _mm256_set1_ps(var_clamp_mult)));
     __m256 ideal_update = _mm256_max_ps(_mm256_min_ps(normal_upd, high), low); 
     return _mm256_blendv_ps(prev_var, ideal_update, mask);
 }
 
 
-
-void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-		      float *intensity, const float *weights, float *running_var, float *running_weights,
-		      uint64_t rng_state[8])
+template<bool overwrite_on_wt0>
+void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
+		       float *intensity, const float *weights, float *running_var, float *running_weights,
+		       uint64_t rng_state[8])
 {
     const float w_clamp = params.w_clamp;
     const float var_weight = params.var_weight;
@@ -99,7 +103,7 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
     // Construct our random number generator object on the stack by initializing from the state kept in bonsai/online_mask_filler.c! 
     vec_xorshift_plus rng(rng_state);
 
-    __m256 tmp_var, prev_var, prev_w, w0, w1, w2, w3, i0, i1, i2, i3, res0, res1, res2, res3;
+    __m256 tmp_var, prev_var, prev_w, w0, w1, w2, w3, i0, i1, i2, i3, res0, res1, res2, res3, rw_check;
     __m256 c = _mm256_set1_ps(w_cutoff);
     __m256 root_three = _mm256_sqrt_ps(_mm256_set1_ps(3));
     __m256 one = _mm256_set1_ps(1.0f);
@@ -133,9 +137,12 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 	  // all zeros if the variance estimate failed or all ones if the variance estimate was successful
 	  __m256 mask = _mm256_cmp_ps(npass, _mm256_set1_ps(-8.1), _CMP_LT_OS);
 
-	  // If the running weight is 0, we want to set the running variance to the next successful v1 estimate and the running weight
-	  // to w_clamp. To do this, make this mask rw_check that is all ones if prev_w is <= 0.0f.
-	  __m256 rw_check = _mm256_cmp_ps(prev_w, zero, _CMP_LE_OS);
+	  if (overwrite_on_wt0)
+	  {
+	      // If the running weight is 0, we want to set the running variance to the next successful v1 estimate and the running 
+	      // weight to w_clamp. To do this, make this mask rw_check that is all ones if prev_w is <= 0.0f.
+	      rw_check = _mm256_cmp_ps(prev_w, zero, _CMP_LE_OS);
+	  }
 	      
 	  // Here, we do the variance computation:
 	  tmp_var = var_est(w0, w1, w2, w3, i0, i1, i2, i3);
@@ -146,23 +153,32 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 	  // We also need to modify the weight values
 	  __m256 w = _mm256_blendv_ps(_mm256_set1_ps(-w_clamp), _mm256_set1_ps(w_clamp), mask);    // either +w_clamp or -w_clamp
 	  w = _mm256_min_ps(_mm256_max_ps(_mm256_add_ps(w, prev_w), zero), one);
+	  if (!overwrite_on_wt0)
+	      prev_w = w;
 
-	  // Update the running variance and running weights based on rw_check
-	  prev_var = _mm256_blendv_ps(prev_var, tmp_var, rw_check);
-	  prev_w = _mm256_blendv_ps(w, _mm256_set1_ps(w_clamp), rw_check);
+	  if (overwrite_on_wt0)
+	  {
+	      // Update the running variance and running weights based on rw_check
+	      prev_var = _mm256_blendv_ps(prev_var, tmp_var, rw_check);
+	      prev_w = _mm256_blendv_ps(w, _mm256_set1_ps(w_clamp), rw_check);
+	  }
 
 	  // Finally, mask fill with the running variance -- if weights less than cutoff, fill
 	  res0 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i0), 
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
+												      _mm256_sqrt_ps(prev_var)))), 
 				  _mm256_cmp_ps(w0, c, _CMP_LT_OS));
 	  res1 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i1),
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
+												      _mm256_sqrt_ps(prev_var)))), 
 				  _mm256_cmp_ps(w1, c, _CMP_LT_OS));
 	  res2 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i2), 
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))),
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
+												      _mm256_sqrt_ps(prev_var)))),
 				  _mm256_cmp_ps(w2, c, _CMP_LT_OS));
 	  res3 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i3), 
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
+												      _mm256_sqrt_ps(prev_var)))), 
 				  _mm256_cmp_ps(w3, c, _CMP_LT_OS));
 	      
 	  // Store the new intensity values - note that we no longer update or store the weights!
@@ -191,6 +207,17 @@ void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt
 
     // Now that we're done, write out the new state of the random number generator back to the stack!
     rng.store_state(rng_state);
+}
+
+
+void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
+		      float *intensity, const float *weights, float *running_var, float *running_weights,
+		      uint64_t rng[8])
+{
+    if (params.overwrite_on_wt0)
+        _online_mask_fill<true> (params, nfreq, nt_chunk, stride, intensity, weights, running_var, running_weights, rng);
+    else
+        _online_mask_fill<false> (params, nfreq, nt_chunk, stride, intensity, weights, running_var, running_weights, rng);
 }
 
 
@@ -239,8 +266,8 @@ inline bool get_v1(const float *intensity, const float *weights, float &v1)
 }
 
 void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-		      float *intensity, const float *weights, float *running_var, float *running_weights,
-		      xorshift_plus &rng)
+			     float *intensity, const float *weights, float *running_var, float *running_weights,
+			     xorshift_plus &rng)
 {
     const int v1_chunk = params.v1_chunk;
     const float w_clamp = params.w_clamp;
@@ -248,6 +275,7 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
     const float var_clamp_add = params.var_clamp_add;
     const float var_clamp_mult = params.var_clamp_mult;
     const float w_cutoff = params.w_cutoff;
+    const bool overwrite_on_wt0 = params.overwrite_on_wt0;
 
     float rn[8]; // holds random numbers for mask filling
     
@@ -266,31 +294,55 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	    float *iacc = &intensity[ifreq*stride + ichunk];
 	    const float *wacc = &weights[ifreq*stride + ichunk];
 	    
-	    if (!get_v1(iacc, wacc, v1))
+	    if (overwrite_on_wt0)
 	    {
-	        // For an unsuccessful v1, we decrease the weight if possible. We do not modify the running variance
-	        rw = max(0.0f, rw - w_clamp);
+	        if (!get_v1(iacc, wacc, v1))
+		{
+		    // For an unsuccessful v1, we decrease the weight if possible. We do not modify the running variance
+		    rw = max(0.0f, rw - w_clamp);
+		}
+		else if (rw <= 0.0f) 
+		{
+		    // KMS: changed logic slightly here!  If the v1 is successful but the running_weight is zero,
+		    // we set the running_variance equal to the value of 'v1' (ignoring the old value of running_variance),
+		    // rather than slowly transitioning from the old variance estimate to the new one.
+		    rv = v1;
+		    rw = w_clamp;
+		} 
+		else 
+		{
+		    // If the v1 was succesful, try to increase the weight, if possible
+		    // KMS: changed max weight from 2.0f to 1.0f here, since taking max_weight=2 was confusing one of my
+		    // bonsai unit tests, and max_weight=2 was just catering to a bug of mine in rf_pipelines anyway!
+		    rw = min(1.0f, rw + w_clamp);
+		    
+		    // Then, restrict the change in variance estimate defined by the clamp parameters
+		    v1 = (1 - var_weight) * rv + var_weight * v1;
+		    v1 = min(v1, rv + var_clamp_add + rv*var_clamp_mult);
+		    v1 = max(v1, rv - var_clamp_add - rv*var_clamp_mult);
+		    rv = v1;
+		}
 	    }
-	    else if (rw <= 0.0f) 
-	    {
-	        // KMS: changed logic slightly here!  If the v1 is successful but the running_weight is zero,
-	        // we set the running_variance equal to the value of 'v1' (ignoring the old value of running_variance),
-	        // rather than slowly transitioning from the old variance estimate to the new one.
-	        rv = v1;
-		rw = w_clamp;
-	    } 
-	    else 
-	    {
-	        // If the v1 was succesful, try to increase the weight, if possible
-	        // KMS: changed max weight from 2.0f to 1.0f here, since taking max_weight=2 was confusing one of my
-	        // bonsai unit tests, and max_weight=2 was just catering to a bug of mine in rf_pipelines anyway!
-	        rw = min(1.0f, rw + w_clamp);
 
-		// Then, restrict the change in variance estimate defined by the clamp parameters
-		v1 = (1 - var_weight) * rv + var_weight * v1;
-		v1 = min(v1, rv + var_clamp_add + rv*var_clamp_mult);
-		v1 = max(v1, rv - var_clamp_add - rv*var_clamp_mult);
-		rv = v1;
+	    else
+	    {
+	        // Get v1_chunk
+	        if (get_v1(iacc, wacc, v1))
+		{
+		    // If the v1 was succesful, try to increase the weight, if possible
+		    rw = min(1.0f, running_weights[ifreq] + w_clamp);
+		    // Then, restrict the change in variance estimate definted by the clamp parameters
+		    v1 = min((1 - var_weight) * running_var[ifreq] + var_weight * v1, 
+			     running_var[ifreq] + var_clamp_add + running_var[ifreq] * var_clamp_mult);
+		    v1 = max(v1, running_var[ifreq] - var_clamp_add - running_var[ifreq] * var_clamp_mult);
+		    // Finally, update the running variance
+		    rv = v1;
+	        }
+		else
+		{
+		    // For an unsuccessful v1, we decrease the weight if possible. We do not modify the running variance
+		    rw = max(0.0f, running_weights[ifreq] - w_clamp);
+		}
 	    }
 	    
 	    // Scaling factor for random numbers.
@@ -306,6 +358,7 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	    }
 	}
 
+	// Store running weights and var
 	running_var[ifreq] = rv;
 	running_weights[ifreq] = rw;
     }

@@ -217,6 +217,7 @@ struct online_mask_filler_params {
     float var_clamp_mult = 3.3e-3;  // max allowed fractional change in running_variance per v1_chunk
     float w_clamp = 3.3e-3;         // change in running_weight (either positive or negative) per v1_chunk
     float w_cutoff = 0.5;           // threshold weight below which intensity is considered masked
+    bool overwrite_on_wt0 = true;
 };
 
 
