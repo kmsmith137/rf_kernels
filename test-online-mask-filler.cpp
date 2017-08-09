@@ -4,7 +4,9 @@
 #include <iostream>
 #include <cassert>
 #include <random>
-#include "rf_kernels.hpp"
+
+#include "rf_kernels/xorshift_plus.hpp"
+#include "rf_kernels/online_mask_filler.hpp"
 
 using namespace std;
 using namespace rf_kernels;
@@ -221,4 +223,3 @@ int main(int argc, char **argv)
     run_online_mask_filler_unit_tests();
     return 0;
 }
-

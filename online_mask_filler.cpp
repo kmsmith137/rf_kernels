@@ -1,6 +1,8 @@
-#include "rf_kernels.hpp"
-#include "immintrin.h"
 #include <iostream>
+#include "immintrin.h"
+
+#include "rf_kernels/xorshift_plus.hpp"
+#include "rf_kernels/online_mask_filler.hpp"
 
 using namespace std;
 
