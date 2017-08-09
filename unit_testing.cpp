@@ -1,4 +1,6 @@
 #include <cmath>
+#include <cstring>
+#include <climits>
 #include "rf_kernels/unit_testing.hpp"
 
 using namespace std;
