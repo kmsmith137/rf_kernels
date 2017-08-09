@@ -38,17 +38,17 @@ struct online_mask_filler_timing_thread : public timing_thread {
 	uint64_t rng_state[8];
 
 	// Chosen arbitrarily!
-	const int niter = 8;
+	const int niter = 64;
 
 	this->start_timer();
 
-	for (int i = 0; i < 8; i++)
+	for (int i = 0; i < niter; i++)
 	    online_mask_fill(params, nfreq, nt_chunk, stride, intensity, weights, running_variance, running_weights, rng_state);
 	
 	double dt = this->stop_timer();
 
 	if (thread_id == 0)
-	    cout << "online_mask_filler: " << (dt/niter) << " seconds" << endl;
+	    cout << "online_mask_filler: " << niter << "iterations, total time " << dt << " seconds (" << (dt/niter) << " seconds/iteration)" << endl;
 
 	free(intensity);
 	free(weights);
