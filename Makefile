@@ -5,7 +5,7 @@
 
 
 # Note that INCFILES are in the rf_kernels/ subdirectory
-INCFILES = xorshift_plus.hpp 
+INCFILES = online_mask_filler.hpp xorshift_plus.hpp 
 
 OFILES = online_mask_filler.o
 
@@ -34,9 +34,9 @@ all: librf_kernels.so $(TESTBINFILES)
 
 install: librf_kernels.so
 	mkdir -p $(INCDIR)/rf_kernels $(LIBDIR)/
-	cp -f rf_kernels.hpp $(INCDIR)/
-	cp -f $(INCFILES) $(INCDIR)/rf_kernels
+	for f in $(INCFILES); do cp rf_kernels/$$f $(INCDIR)/rf_kernels; done
 	cp -f librf_kernels.so $(LIBDIR)/
+	cp -f rf_kernels.hpp $(INCDIR)/
 
 uninstall:
 	rm -f $(LIBDIR)/librf_kernels.so
@@ -44,7 +44,7 @@ uninstall:
 	rmdir $(INCDIR)/rf_kernels
 
 clean:
-	rm -f $(TESTBINFILES) *~ *.o *.so *.pyc rf_kernels/*.hpp
+	rm -f $(TESTBINFILES) *~ *.o *.so *.pyc rf_kernels/*~
 
 
 ####################################################################################################
