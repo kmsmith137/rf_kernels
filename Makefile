@@ -10,8 +10,10 @@ INCFILES = online_mask_filler.hpp xorshift_plus.hpp
 OFILES = online_mask_filler.o
 
 TESTBINFILES = test-online-mask-filler
+TIMEBINFILES = time-online-mask-filler
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
+TIMING_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TIMEBINFILES))
 
 
 ####################################################################################################
@@ -32,9 +34,11 @@ $(error Fatal: Makefile.local must define LIBDIR variable)
 endif
 
 
-all: librf_kernels.so $(TESTBINFILES)
+all: librf_kernels.so $(TESTBINFILES) $(TIMEBINFILES)
 
 test: $(TESTBINFILES) $(UNITTEST_TOUCHFILES)
+
+timings: $(TIMEBINFILES) $(TIMING_TOUCHFILES)
 
 install: librf_kernels.so
 	mkdir -p $(INCDIR)/rf_kernels $(LIBDIR)/
@@ -67,8 +71,15 @@ unit_testing.o: unit_testing.cpp rf_kernels/unit_testing.hpp
 test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
+time-online-mask-filler.o: time-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+	$(CPP) -c -o $@ $<
+
+
 librf_kernels.so: $(OFILES)
 	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+time-online-mask-filler: time-online-mask-filler.o online_mask_filler.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^

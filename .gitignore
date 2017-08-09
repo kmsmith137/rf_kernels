@@ -6,3 +6,4 @@ Makefile.local
 unittest_touchfiles
 
 test-online-mask-filler
+time-online-mask-filler
