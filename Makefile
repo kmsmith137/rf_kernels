@@ -11,6 +11,8 @@ OFILES = online_mask_filler.o
 
 TESTBINFILES = test-online-mask-filler
 
+UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
+
 
 ####################################################################################################
 
@@ -32,6 +34,8 @@ endif
 
 all: librf_kernels.so $(TESTBINFILES)
 
+test: $(TESTBINFILES) $(UNITTEST_TOUCHFILES)
+
 install: librf_kernels.so
 	mkdir -p $(INCDIR)/rf_kernels $(LIBDIR)/
 	for f in $(INCFILES); do cp rf_kernels/$$f $(INCDIR)/rf_kernels; done
@@ -44,7 +48,11 @@ uninstall:
 	rmdir $(INCDIR)/rf_kernels
 
 clean:
-	rm -f $(TESTBINFILES) *~ *.o *.so *.pyc rf_kernels/*~
+	rm -f $(TESTBINFILES) *~ *.o *.so *.pyc rf_kernels/*~ unittest_touchfiles/ut_*
+	if [ -d unittest_touchfiles ]; then rmdir unittest_touchfiles; fi
+
+unittest_touchfiles/ut_%: %
+	mkdir -p unittest_touchfiles && ./$< && touch $@
 
 
 ####################################################################################################
