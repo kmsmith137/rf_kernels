@@ -228,6 +228,14 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 }
 
 
+// There are now four versions of the online mask filler. If overwrite_on_wt0 is true, when the running weight drops to zero, 
+// the running variance will be updated to the first successful variance estimate, instead of being restricted by the variance
+// clamp parameters. If modify_weights is true, weights will be set to the running weights and the intensity will be set to the 
+// sqrt(3 * running_var) * rng if the value was masked, or left alone if not. If modify_weights is false, the weights will not
+// be modified and the intensity will be sqrt(3 * rv) * rw * rng if masked and intensity * rw if unmasked.
+
+// modify_weights = false is required for bonsai
+// modify_weights = true makes the most sense for rf_pipelines
 void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
 		      float *intensity, float *weights, float *running_var, float *running_weights,
 		      uint64_t rng[8])

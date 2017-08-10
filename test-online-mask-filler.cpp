@@ -214,6 +214,7 @@ void run_online_mask_filler_unit_tests()
 {
     // Externally-visible function for unit testing
     test_xorshift();
+    // Test each version of the online mask filler
     cout << "----------------------------------------" << endl;
     test_filler(8, 32, 0.20, 0.20, true, false);
     cout << "----------------------------------------" << endl;
