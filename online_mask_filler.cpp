@@ -157,8 +157,7 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 	  w = _mm256_min_ps(_mm256_max_ps(_mm256_add_ps(w, prev_w), zero), one);
 	  if (!overwrite_on_wt0)
 	      prev_w = w;
-
-	  if (overwrite_on_wt0)
+	  else
 	  {
 	      // Update the running variance and running weights based on rw_check
 	      prev_var = _mm256_blendv_ps(prev_var, tmp_var, rw_check);
@@ -187,10 +186,10 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 	  else
 	  {
 	      // Finally, mask fill with the running variance -- if weights less than cutoff, fill
-	      res0 = _mm256_blendv_ps(i0, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w0, c, _CMP_LT_OS));
-	      res1 = _mm256_blendv_ps(i1, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w1, c, _CMP_LT_OS));
-	      res2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w2, c, _CMP_LT_OS));
-	      res3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w3, c, _CMP_LT_OS));
+	      res0 = _mm256_blendv_ps(i0, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w0, c, _CMP_LT_OS));
+	      res1 = _mm256_blendv_ps(i1, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w1, c, _CMP_LT_OS));
+	      res2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w2, c, _CMP_LT_OS));
+	      res3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w3, c, _CMP_LT_OS));
 	      
 	      // Store the new weight values
 	      _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk), w);
@@ -359,18 +358,18 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 		if (get_v1(iacc, wacc, v1))
 		{
 		    // If the v1 was succesful, try to increase the weight, if possible
-		    rw = min(1.0f, running_weights[ifreq] + w_clamp);
+		    rw = min(1.0f, rw + w_clamp);
 		    // Then, restrict the change in variance estimate definted by the clamp parameters
-		    v1 = min((1 - var_weight) * running_var[ifreq] + var_weight * v1, 
-			     running_var[ifreq] + var_clamp_add + running_var[ifreq] * var_clamp_mult);
-		    v1 = max(v1, running_var[ifreq] - var_clamp_add - running_var[ifreq] * var_clamp_mult);
+		    v1 = min((1 - var_weight) * rv + var_weight * v1, 
+			     rv + var_clamp_add + rv * var_clamp_mult);
+		    v1 = max(v1, rv - var_clamp_add - rv * var_clamp_mult);
 		    // Finally, update the running variance
 		    rv = v1;
 		}
 		else
 		{
 		    // For an unsuccessful v1, we decrease the weight if possible. We do not modify the running variance
-		    rw = max(0.0f, running_weights[ifreq] - w_clamp);
+		    rw = max(0.0f, rw - w_clamp);
 		}
 	    }
 	    
@@ -382,12 +381,15 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	    {
 		if (i % 8 == 0)
 		  rng.gen_floats(rn);
-		
-		iacc[i] = (wacc[i] < w_cutoff) ? rn[i % 8] * scale : rw * iacc[i];
 
 		if (modify_weights)
-		  wacc[i] = rw;
-	    }
+		{
+  		    iacc[i] = (wacc[i] < w_cutoff) ? rn[i % 8] * sqrt(3 * rv) : iacc[i];
+		    wacc[i] = rw;
+		}
+		else
+		    iacc[i] = (wacc[i] < w_cutoff) ? rn[i % 8] * scale : rw * iacc[i];
+	    } 
 	}
 	
 	// Store running weights and var
