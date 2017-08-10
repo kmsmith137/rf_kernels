@@ -93,7 +93,7 @@ inline __m256 update_var(__m256 tmp_var, __m256 prev_var, float var_weight, floa
 
 template<bool overwrite_on_wt0, bool modify_weights>
 void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-		       float *intensity, const float *weights, float *running_var, float *running_weights,
+		       float *intensity, float *weights, float *running_var, float *running_weights,
 		       uint64_t rng_state[8])
 {
     const float w_clamp = params.w_clamp;
@@ -158,7 +158,6 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 	  if (!overwrite_on_wt0)
 	      prev_w = w;
 
-
 	  if (overwrite_on_wt0)
 	  {
 	      // Update the running variance and running weights based on rw_check
@@ -166,26 +165,39 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 	      prev_w = _mm256_blendv_ps(w, _mm256_set1_ps(w_clamp), rw_check);
 	  }
 	  
-	  // Finally, mask fill with the running variance -- if weights less than cutoff, fill
-	  res0 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i0), 
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
-												      _mm256_sqrt_ps(prev_var)))), 
-				  _mm256_cmp_ps(w0, c, _CMP_LT_OS));
-	  
-	  res1 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i1),
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
-												      _mm256_sqrt_ps(prev_var)))), 
-				  _mm256_cmp_ps(w1, c, _CMP_LT_OS));
-	  
-	  res2 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i2), 
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
-												      _mm256_sqrt_ps(prev_var)))),
-				  _mm256_cmp_ps(w2, c, _CMP_LT_OS));
-	  
-	  res3 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i3), 
-				  _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, 
-												      _mm256_sqrt_ps(prev_var)))), 
-				  _mm256_cmp_ps(w3, c, _CMP_LT_OS));
+	  if (!modify_weights)
+	  {
+	      // Finally, mask fill with the running variance -- if weights less than cutoff, fill
+	      res0 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i0), 
+				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				      _mm256_cmp_ps(w0, c, _CMP_LT_OS));
+	      
+	      res1 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i1),
+				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				      _mm256_cmp_ps(w1, c, _CMP_LT_OS));
+	      
+	      res2 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i2), 
+				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))),
+				      _mm256_cmp_ps(w2, c, _CMP_LT_OS));
+	      
+	      res3 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i3), 
+				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				      _mm256_cmp_ps(w3, c, _CMP_LT_OS));
+	  }
+	  else
+	  {
+	      // Finally, mask fill with the running variance -- if weights less than cutoff, fill
+	      res0 = _mm256_blendv_ps(i0, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w0, c, _CMP_LT_OS));
+	      res1 = _mm256_blendv_ps(i1, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w1, c, _CMP_LT_OS));
+	      res2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w2, c, _CMP_LT_OS));
+	      res3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(tmp_var))), _mm256_cmp_ps(w3, c, _CMP_LT_OS));
+	      
+	      // Store the new weight values
+	      _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk), w);
+	      _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 8), w);
+	      _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 16), w);
+	      _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk + 24), w);
+	  }
 	  
 	  // Store the new intensity values - note that we no longer update or store the weights!
 	  _mm256_storeu_ps((float*) (intensity + ifreq * stride + ichunk), res0);
@@ -218,7 +230,7 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 
 
 void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-		      float *intensity, const float *weights, float *running_var, float *running_weights,
+		      float *intensity, float *weights, float *running_var, float *running_weights,
 		      uint64_t rng[8])
 {
     if (params.overwrite_on_wt0)
@@ -283,7 +295,7 @@ inline bool get_v1(const float *intensity, const float *weights, float &v1)
 }
 
 void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-			     float *intensity, const float *weights, float *running_var, float *running_weights,
+			     float *intensity, float *weights, float *running_var, float *running_weights,
 			     xorshift_plus &rng)
 {
     const int v1_chunk = params.v1_chunk;
@@ -310,7 +322,7 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	{
 	    // (intensity, weights) pointers for this v1_chunk
 	    float *iacc = &intensity[ifreq*stride + ichunk];
-	    const float *wacc = &weights[ifreq*stride + ichunk];
+	    float *wacc = &weights[ifreq*stride + ichunk];
 	    
 	    if (overwrite_on_wt0)
 	    {
@@ -372,6 +384,9 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 		  rng.gen_floats(rn);
 		
 		iacc[i] = (wacc[i] < w_cutoff) ? rn[i % 8] * scale : rw * iacc[i];
+
+		if (modify_weights)
+		  wacc[i] = rw;
 	    }
 	}
 	

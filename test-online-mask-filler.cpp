@@ -28,9 +28,9 @@ inline bool equality_checker(float a, float b, float epsilon)
 }
 
 
-inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, bool overwrite_on_wt0, float w_cutoff=0.5, 
-			float w_clamp=3e-3, float var_clamp_add=3e-3, float var_clamp_mult=3e-3, float var_weight=2e-3, 
-			int niter=10000)
+inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, bool overwrite_on_wt0, bool modify_weights, 
+			float w_cutoff=0.5, float w_clamp=3e-3, float var_clamp_add=3e-3, float var_clamp_mult=3e-3, 
+		        float var_weight=2e-3, int niter=10000)
 {
     assert (nfreq * nt_chunk % 8 == 0);
     assert (nt_chunk % 8 == 0);
@@ -103,6 +103,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
 	online_mask_filler_params params = {};
 	params.overwrite_on_wt0 = overwrite_on_wt0;
+	params.modify_weights = modify_weights;
 
 	// Process away! Note that the double instances of nt_chunk are for the "stride" parameter which is equal to nt_chunk for 
 	// this test
@@ -211,10 +212,16 @@ inline bool test_xorshift(int niter=10000)
 
 void run_online_mask_filler_unit_tests()
 {
-  // Externally-visible function for unit testing
-  test_xorshift();
-  test_filler(8, 32, 0.20, 0.20, true);
-  test_filler(8, 32, 0.20, 0.20, false);
+    // Externally-visible function for unit testing
+    test_xorshift();
+    cout << "----------------------------------------" << endl;
+    test_filler(8, 32, 0.20, 0.20, true, false);
+    cout << "----------------------------------------" << endl;
+    test_filler(8, 32, 0.20, 0.20, false, false);
+    cout << "----------------------------------------" << endl;
+    test_filler(8, 32, 0.20, 0.20, true, true);
+    cout << "----------------------------------------" << endl;
+    test_filler(8, 32, 0.20, 0.20, false, true);
 }
 
 

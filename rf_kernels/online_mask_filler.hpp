@@ -28,12 +28,12 @@ struct online_mask_filler_params {
 // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk) with spacing 'stride' between frequency channels.
 // 'running_var' and 'running_weights' are 1D arrays of length nfreq.
 extern void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-			     float *intensity, const float *weights, float *running_var, float *running_weights, 
+			     float *intensity, float *weights, float *running_var, float *running_weights, 
 			     uint64_t rng_state[8]);
 
 
 extern void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-				    float *intensity, const float *weights, float *running_var, float *running_weights, 
+				    float *intensity, float *weights, float *running_var, float *running_weights, 
 				    xorshift_plus &rng);
 
 
