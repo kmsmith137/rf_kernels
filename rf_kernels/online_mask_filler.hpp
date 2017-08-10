@@ -20,7 +20,8 @@ struct online_mask_filler_params {
     float var_clamp_mult = 3.3e-3;  // max allowed fractional change in running_variance per v1_chunk
     float w_clamp = 3.3e-3;         // change in running_weight (either positive or negative) per v1_chunk
     float w_cutoff = 0.5;           // threshold weight below which intensity is considered masked
-    bool overwrite_on_wt0 = true;
+    bool overwrite_on_wt0 = true;   // if the weights drop to zero, overwrite the intensity with the first successful v1 instead of restricting it to v1_clamp
+    bool modify_weights = false;    // if false, the weights are unmodified by the kernel, but the intensity is multiplied by the weights (wanted in bonsai)
 };
 
 
