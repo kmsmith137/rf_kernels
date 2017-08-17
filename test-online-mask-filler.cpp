@@ -5,6 +5,7 @@
 #include <cassert>
 #include <random>
 
+#include "rf_kernels/unit_testing.hpp"
 #include "rf_kernels/xorshift_plus.hpp"
 #include "rf_kernels/online_mask_filler.hpp"
 
@@ -28,48 +29,96 @@ inline bool equality_checker(float a, float b, float epsilon)
 }
 
 
-inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, bool overwrite_on_wt0, bool modify_weights, 
-			float w_cutoff=0.5, float w_clamp=3e-3, float var_clamp_add=3e-3, float var_clamp_mult=3e-3, 
-		        float var_weight=2e-3, int niter=10000)
-{
-    assert (nfreq * nt_chunk % 8 == 0);
-    assert (nt_chunk % 8 == 0);
-    assert (pfailv1 < 1);
-    assert (pfailv1 >=0);
-    assert (pallzero < 1);
-    assert (pallzero >=0);
-    random_device rd;
 
+// gen_weights(): generates 32 random weights (one v1_chunk)
+//
+// This exists solely for the unit test of the online mask filler!
+// This is just gen_floats with extra pfailv1 and pallzero parameters that 
+// dictate whether a group of 32 random numbers (which it generates at once) should result
+// in a failed v1 estimate (i.e. >=24 weights less than the cutoff) or whether
+// all weight values should be zero. Currently, the implementation is a little 
+// boneheaded and can definitely be imporved...
+//
+// KMS: this was previously a member function of 'struct xorshift_plus', but I switched
+// to using std::mt19937, since I wanted to make some minor changes which were easier
+// using the standard library RNG.
+
+
+inline void gen_weights(std::mt19937 &rng, float *weights, float pfailv1, float pallzero, float w_cutoff)
+{
+    // If the first random number generated is less than pallzero, we make it all zero.
+    // If the first random number generated is less than pallzero + pfailv1 but
+    // greater than pallzero, we make sure the v1 fails.  Else, we just fill weights randomly!
+
+    if (uniform_rand(rng) < pallzero) {
+	for (int i = 0; i < 32; i++)
+	    weights[i] = 0.0;
+    }
+    else if (uniform_rand(rng) < pfailv1) {
+	// This scheme guarantees that the v1 will fail!
+	for (int i = 0; i < 32; i++)
+	    weights[i] = uniform_rand(rng, 0.0, 0.99 * w_cutoff);
+	for (int i = 0; i < 8; i++)
+	    weights[randint(rng,0,32)] = uniform_rand(rng, 1.01 * w_cutoff, 1.0);
+    }
+    else {
+	// Avoid generating weights too close to w_cutoff
+	for (int i = 0; i < 32; i++)
+	    weights[i] = (uniform_rand(rng) < 0.5) ? uniform_rand(rng, 0.0, 0.99*w_cutoff) : uniform_rand(rng, 1.01*w_cutoff, 1.0);
+    }
+}
+
+
+void test_filler(std::mt19937 &rng, const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride, int niter)
+{
+    // Used when randomly generating weights below.
+    const float pfailv1 = 0.2;
+    const float pallzero = 0.2;
+
+    // Assumed by gen_weights() below.
+    assert (nt_chunk % 32 == 0);
+
+    vector<float> intensity(nfreq * stride);
+    vector<float> weights(nfreq * stride);
+    vector<float> intensity2(nfreq * stride);
+    vector<float> weights2(nfreq * stride);
+    
+    // As in the prng unit test, we need to ensure both random number generators are initialized with the same seed values!
+    unsigned int rn1 = rng();
+    unsigned int rn2 = rng();
+    unsigned int rn3 = rng();
+    unsigned int rn4 = rng();
+    unsigned int rn5 = rng();
+    unsigned int rn6 = rng();
+    unsigned int rn7 = rng();
+    unsigned int rn8 = rng();
+    
+    uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
+    xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
+    
     for (int iter=0; iter<niter; iter++)
     {
         // First, we randomize the weights and intensity values
         // We need two copies to put through each processing function and compare
-        xorshift_plus rn;
-    
-	float intensity[nfreq * nt_chunk];
-	float weights[nfreq * nt_chunk];
-	float intensity2[nfreq * nt_chunk];
-	float weights2[nfreq * nt_chunk];
-	
-	// Generate intensities 8 at a time using vanilla prng
-	for (int i=0; i < nfreq * nt_chunk; i+=8)
-	    rn.gen_floats(intensity + i);
+
+	// Intensities
+	for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	    for (int it = 0; it < nt_chunk; it++)
+		intensity[ifreq*stride + it] = uniform_rand(rng);
 	
 	// Use custom function to generate weights 
-	for (int i=0; i < nfreq * nt_chunk; i+=32)
-	    rn.gen_weights(weights + i, pfailv1, pallzero);
-
+	for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	    for (int it = 0; it < nt_chunk; it += 32)
+		gen_weights(rng, &weights[ifreq*stride + it], pfailv1, pallzero, params.w_cutoff);
+	
 	// Copy
-	for (int i=0; i < nfreq * nt_chunk; i++)
-	{
-	    intensity2[i] = intensity[i];
-	    weights2[i] = weights[i];
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it++) {
+		intensity2[ifreq*stride + it] = intensity[ifreq*stride + it];
+		weights2[ifreq*stride + it] = weights[ifreq*stride + it];
+	    }
 	}
 	
-	// Now, we generate random values for the running variance and running weights
-	// Using the vec_xorshift_plus functions was too much of a hassle due to vector issues
-	// so I've opted to use the C++ rng suite
-	mt19937 gen (rd());
 	// Weights between 0 and 1
 	uniform_real_distribution<float> w_dis(0.0, 1.0);
 	// Variance between 0.0 and 0.02
@@ -83,39 +132,22 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	// Make two copies
 	for (int i=0; i<nfreq; i++)
 	{
-	    running_var[i] = var_dis(gen);
+	    running_var[i] = var_dis(rng);
 	    running_var2[i] = running_var[i];
-	    running_weights[i] = w_dis(gen);
+	    running_weights[i] = w_dis(rng);
 	    running_weights2[i] = running_weights[i];
 	}
-    
-	// As in the prng unit test, we need to ensure both random number generators are initialized with the same seed values!
-	unsigned int rn1 = rd();
-	unsigned int rn2 = rd();
-	unsigned int rn3 = rd();
-	unsigned int rn4 = rd();
-	unsigned int rn5 = rd();
-	unsigned int rn6 = rd();
-	unsigned int rn7 = rd();
-	unsigned int rn8 = rd();
-	
-	uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
-	xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
-	online_mask_filler_params params = {};
-	params.overwrite_on_wt0 = overwrite_on_wt0;
-	params.modify_weights = modify_weights;
 
-	// Process away! Note that the double instances of nt_chunk are for the "stride" parameter which is equal to nt_chunk for 
-	// this test
+	// Process away!
 	float *running_weights_arr = &running_weights[0];
 	float *running_var_arr = &running_var[0];
 	float *running_weights_arr2 = &running_weights2[0];
 	float *running_var_arr2 = &running_var2[0];
 
-	online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity, weights, 
+	online_mask_fill(params, nfreq, nt_chunk, stride, &intensity[0], &weights[0], 
 			 running_var_arr, running_weights_arr, rng_state);
 
-	scalar_online_mask_fill(params, nfreq, nt_chunk, nt_chunk, intensity2, weights2, 
+	scalar_online_mask_fill(params, nfreq, nt_chunk, stride, &intensity2[0], &weights2[0], 
 				running_var_arr2, running_weights_arr2, sca_rn);
 
 	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be 
@@ -123,7 +155,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	for (int ifreq=0; ifreq<nfreq; ifreq++)
 	{
 	    // Check running variance
-	    if (!equality_checker(running_var[ifreq], running_var2[ifreq], 10e-8))
+	    if (!equality_checker(running_var[ifreq], running_var2[ifreq], 1.0e-6))
 	    {
 		cout << "Something's gone wrong! The running variances at frequency " << ifreq << " on iteration " << iter << " are unequal!" << endl;
 		cout << "Scalar output: " << running_var2[ifreq] << "\t\t Vectorized output: " << running_var[ifreq] << endl;
@@ -131,7 +163,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	    }
 
 	    // Check running weights
-	    if (!equality_checker(running_weights[ifreq], running_weights2[ifreq], 10e-8))
+	    if (!equality_checker(running_weights[ifreq], running_weights2[ifreq], 1.0e-6))
 	    {
 		cout << "Something's gone wrong! The running weights at frequency " << ifreq << " on iteration " << iter << " are unequal!" << endl;
 		cout << "Scalar output: " << running_weights2[ifreq] << "\t\t Vectorized output: " << running_weights[ifreq] << endl;
@@ -141,27 +173,62 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	    for (int i=0; i<nt_chunk; i++)
 	    {
 		// Check intensity
-		if (!equality_checker(intensity[ifreq * nt_chunk + i], intensity2[ifreq * nt_chunk + i], 10e-5))
+		if (!equality_checker(intensity[ifreq * stride + i], intensity2[ifreq * stride + i], 1.0e-6))
 		{ 
 		    cout << "Something has gone wrong! The intensity array produced by the scalar mask filler does not match the intensity array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
-		    cout << "Scalar output: " << intensity2[ifreq * nt_chunk + i] << "\t\t Vectorized output: " << intensity[ifreq * nt_chunk + i] << endl;
+		    cout << "Scalar output: " << intensity2[ifreq * stride + i] << "\t\t Vectorized output: " << intensity[ifreq * stride + i] << endl;
 		    exit(1);
 		}
 		
 		// Check weights
-		if (!equality_checker(weights[ifreq * nt_chunk + i], weights2[ifreq * nt_chunk + i], 10e-5))
+		if (!equality_checker(weights[ifreq * stride + i], weights2[ifreq * stride + i], 1.0e-6))
 		{
 		    cout << "Something has gone wrong! The weights array produced by the scalar mask filler does not match the weights array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
-		    cout << "Scalar output: " << weights2[ifreq * nt_chunk + i] << "\t\t Vectorized output: " << weights[ifreq * nt_chunk + i] << endl;
+		    cout << "Scalar output: " << weights2[ifreq * stride + i] << "\t\t Vectorized output: " << weights[ifreq * stride + i] << endl;
 		    exit(1);
 		}
 	    }
 	}
     }
+}
+
+
+void test_filler(int nouter=100)
+{
+    // Using the vec_xorshift_plus functions was too much of a hassle due to vector issues
+    // so I've opted to use the C++ rng suite to generate input data.
+    random_device rd;
+    mt19937 rng (rd());
+ 
+    // In each "outer" iteration, the parameters of the unit test are randomized.
+    for (int iouter = 0; iouter < nouter; iouter++) {
+	online_mask_filler_params params;
+	params.v1_chunk = 32;   // currently hardcoded
+	params.var_weight = uniform_rand(rng, 1.0e-3, 0.1);
+	params.var_clamp_add = uniform_rand(rng, 1.0e-10, 0.1);
+	params.var_clamp_mult = uniform_rand(rng, 1.0e-10, 0.1);
+	params.w_clamp = uniform_rand(rng, 1.0e-10, 1.0);
+	params.w_cutoff = uniform_rand(rng, 0.1, 0.9);
+	params.overwrite_on_wt0 = randint(rng, 0, 2);
+	params.modify_weights = randint(rng, 0, 2);
+
+	int nfreq = randint(rng, 1, 65);
+	int nt_chunk = randint(rng, 1, 9) * params.v1_chunk;   // must be multiple of v1_chunk
+	int stride = randint(rng, nt_chunk, 2*nt_chunk);
+	int ninner = 100;   // Number of "inner" iterations
+
+#if 0
+	cout << "outer iteration " << iouter << endl
+	     << "    overwrite_on_wt0 = " << params.overwrite_on_wt0 << endl
+	     << "    modify_weights = " << params.modify_weights << endl;
+#endif
+	
+	test_filler(rng, params, nfreq, nt_chunk, stride, ninner);
+    }
+
     cout << "***online_mask_filler unit test passed!" << endl;
-    return true;
 }
 
 
@@ -210,24 +277,10 @@ inline bool test_xorshift(int niter=10000)
 }
 
 
-void run_online_mask_filler_unit_tests()
-{
-    // Externally-visible function for unit testing
-    test_xorshift();
-    // Test each version of the online mask filler
-    cout << "----------------------------------------" << endl;
-    test_filler(8, 32, 0.20, 0.20, true, false);
-    cout << "----------------------------------------" << endl;
-    test_filler(8, 32, 0.20, 0.20, false, false);
-    cout << "----------------------------------------" << endl;
-    test_filler(8, 32, 0.20, 0.20, true, true);
-    cout << "----------------------------------------" << endl;
-    test_filler(8, 32, 0.20, 0.20, false, true);
-}
-
-
 int main(int argc, char **argv)
 {
-    run_online_mask_filler_unit_tests();
+    test_xorshift();
+    test_filler();
+
     return 0;
 }

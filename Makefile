@@ -68,7 +68,7 @@ online_mask_filler.o: online_mask_filler.cpp rf_kernels/internals.hpp rf_kernels
 unit_testing.o: unit_testing.cpp rf_kernels/unit_testing.hpp
 	$(CPP) -c -o $@ $<
 
-test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
 time-online-mask-filler.o: time-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp

@@ -10,6 +10,7 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <random>
 #include <iostream>
 #include <sys/time.h>
 #include <condition_variable>
@@ -18,6 +19,27 @@ namespace rf_kernels {
 #if 0
 }; // pacify emacs c-mode
 #endif
+
+
+// -------------------------------------------------------------------------------------------------
+//
+// RNG helpers
+
+
+inline double uniform_rand(std::mt19937 &rng)
+{
+    return std::uniform_real_distribution<>()(rng);
+}
+
+inline double uniform_rand(std::mt19937 &rng, double lo, double hi)
+{
+    return lo + (hi-lo) * uniform_rand(rng);
+}
+
+inline ssize_t randint(std::mt19937 &rng, ssize_t lo, ssize_t hi)
+{
+    return std::uniform_int_distribution<>(lo,hi-1)(rng);   // note hi-1 here!
+}
 
 
 // -------------------------------------------------------------------------------------------------

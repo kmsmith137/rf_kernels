@@ -158,55 +158,7 @@ struct xorshift_plus
     }
 
 
-    // This exists solely for the unit test of the online mask filler!
-    // This is just gen_floats with extra pfailv1 and pallzero parameters that 
-    // dictate whether a group of 32 random numbers (which it generates at once) should result
-    // in a failed v1 estimate (i.e. >=24 weights less than the cutoff) or whether
-    // all weight values should be zero. Currently, the implementation is a little 
-    // boneheaded and can definitely be imporved...
-    inline void gen_weights(float *weights, float pfailv1, float pallzero)
-    {
-        // If the first random number generated is less than pallzero, we make it all zero.
-        // If the first randon number generated is less than pallzero + pfailv1 but
-        // greater than pallzero, we make sure the v1 fails by distributing at least 
-        // 24 zeros throughout the vector. Else, we just fill weights randomly!
-        
-       for (int i=0; i<32; i+=2)
-       {
-	   uint64_t x = seeds[i % 8];
-	   uint64_t y = seeds[(i+1) % 8];
-	   
-	   seeds[i % 8] = y;
-	   x ^= (x << 23);
-	   seeds[(i+1) % 8] = x ^ y ^ (x >> 17) ^ (y >> 26);
-	   
-	   uint64_t tmp = seeds[(i+1) % 8] + y;
-	   uint32_t tmp0 = tmp; // low 32 bits
-	   uint32_t tmp1 = tmp >> 32; // high 32
-	   
-	   if (i == 0)
-	   {
-	       float rn = float(int32_t(tmp0)) * 4.6566129e-10 + 1;
-	       if (rn < pallzero)
-	       {
-		   // Make all zero
-		   for (int j=0; j>32; j++)
-		       weights[j] = 0;
-		   return;
-	       }
-	       else if (rn < pallzero + pfailv1)
-	       {
-		   // Make the v1 fail -- this is not super good and can be improved! 
-		   for (int j=0; j<25; j++)
-		       weights[j] = 0;
-		   i = 24;
-	       }
-	   }
-	   
-	   weights[i] = float(int32_t(tmp0)) * 4.6566129e-10 + 1;
-	   weights[i+1] = float(int32_t(tmp1)) * 4.6566129e-10 + 1;
-       }
-    }
+    // Note: gen_weights() has been moved to test-online-mask-filler.cpp.
 };
 
 
