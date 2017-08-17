@@ -66,13 +66,17 @@ inline __m256 check_weights(__m256 w0, __m256 w1, __m256 w2, __m256 w3)
 inline __m256 var_est(__m256 w0, __m256 w1, __m256 w2, __m256 w3, __m256 i0, __m256 i1, __m256 i2, __m256 i3)
 {
     // Does variance estimation for 32 intensity/weight values. Assumes mean=0.
+    //
+    // Returns a constant register containing the variance estimate (or zero, in
+    // the corner case where all weights are zero)
+    
     __m256 wi0 = _mm256_mul_ps(_mm256_mul_ps(i0, i0), w0);
     __m256 wi01 = _mm256_fmadd_ps(_mm256_mul_ps(i1, i1), w1, wi0);
     __m256 wi012 = _mm256_fmadd_ps(_mm256_mul_ps(i2, i2), w2, wi01);
     __m256 wi0123 = _mm256_fmadd_ps(_mm256_mul_ps(i3, i3), w3, wi012);
     __m256 vsum = hadd(wi0123);
     __m256 wsum = hadd(_mm256_add_ps(_mm256_add_ps(_mm256_add_ps(w0, w1), w2), w3));
-    wsum = _mm256_max_ps(wsum, _mm256_set1_ps(1.0));
+    wsum = _mm256_max_ps(wsum, _mm256_set1_ps(1.0));   // assumes all weights are 0 or 1
     return _mm256_div_ps(vsum, wsum);
 }
 
@@ -80,12 +84,20 @@ inline __m256 var_est(__m256 w0, __m256 w1, __m256 w2, __m256 w3, __m256 i0, __m
 inline __m256 update_var(__m256 tmp_var, __m256 prev_var, float var_weight, float var_clamp_add, float var_clamp_mult, __m256 mask)
 {
     // Does the update of the running variance (tmp_var) by checking the exponential update (normal_upd) doesn't exceed the bounds 
-    // (high/low) specified by var_clamp_add and var_clamp_mult.
-    __m256 normal_upd = _mm256_fmadd_ps(_mm256_set1_ps(var_weight), tmp_var, _mm256_mul_ps(_mm256_set1_ps(1 - var_weight), prev_var)); 
-    __m256 high = _mm256_add_ps(_mm256_add_ps(prev_var, _mm256_set1_ps(var_clamp_add)), _mm256_mul_ps(prev_var, 
-												      _mm256_set1_ps(var_clamp_mult))); 
-    __m256 low = _mm256_sub_ps(_mm256_sub_ps(prev_var, _mm256_set1_ps(var_clamp_add)), _mm256_mul_ps(prev_var, 
-												     _mm256_set1_ps(var_clamp_mult)));
+    // (high/low) specified by var_clamp_add and var_clamp_mult.  Returns the new variance estimate.
+    //
+    // The 'mask' argument is a bitmask, containing ones where the new variance estimate 'tmp_var' is valid.
+
+    __m256 vw = _mm256_set1_ps(var_weight);
+    __m256 vw2 = _mm256_set1_ps(1 - var_weight);
+    __m256 normal_upd = _mm256_fmadd_ps(vw, tmp_var, _mm256_mul_ps(vw2, prev_var));
+    
+    __m256 vca = _mm256_set1_ps(var_clamp_add);
+    __m256 vcm = _mm256_set1_ps(var_clamp_mult);
+    __m256 delta = _mm256_add_ps(vca, _mm256_mul_ps(prev_var, vcm));  // allowed change in prev_var
+    __m256 high = _mm256_add_ps(prev_var, delta);
+    __m256 low = _mm256_sub_ps(prev_var, delta);
+    
     __m256 ideal_update = _mm256_max_ps(_mm256_min_ps(normal_upd, high), low); 
     return _mm256_blendv_ps(prev_var, ideal_update, mask);
 }
@@ -167,29 +179,43 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 	  if (!modify_weights)
 	  {
 	      // Finally, mask fill with the running variance -- if weights less than cutoff, fill
+	      //
+	      // Reminder: if modify_weights=false, then:
+	      //   - output intensities do get multiplied by weights
+	      //   - weights do not get modified
+	      
+	      __m256 rng_scale = _mm256_mul_ps(prev_w, _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)));
+	      
 	      res0 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i0), 
-				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				      _mm256_mul_ps(rng_scale, rng.gen_floats()),
 				      _mm256_cmp_ps(w0, c, _CMP_LT_OS));
 	      
 	      res1 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i1),
-				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				      _mm256_mul_ps(rng_scale, rng.gen_floats()),
 				      _mm256_cmp_ps(w1, c, _CMP_LT_OS));
 	      
 	      res2 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i2), 
-				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))),
+				      _mm256_mul_ps(rng_scale, rng.gen_floats()),
 				      _mm256_cmp_ps(w2, c, _CMP_LT_OS));
 	      
 	      res3 = _mm256_blendv_ps(_mm256_mul_ps(prev_w, i3), 
-				      _mm256_mul_ps(prev_w, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var)))), 
+				      _mm256_mul_ps(rng_scale, rng.gen_floats()),
 				      _mm256_cmp_ps(w3, c, _CMP_LT_OS));
 	  }
 	  else
 	  {
 	      // Finally, mask fill with the running variance -- if weights less than cutoff, fill
-	      res0 = _mm256_blendv_ps(i0, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w0, c, _CMP_LT_OS));
-	      res1 = _mm256_blendv_ps(i1, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w1, c, _CMP_LT_OS));
-	      res2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w2, c, _CMP_LT_OS));
-	      res3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var))), _mm256_cmp_ps(w3, c, _CMP_LT_OS));
+	      //
+	      // Reminder: if modify_weights=false, then:
+	      //   - output intensities do not get multiplied by weights
+	      //   - weights do get modified
+
+	      __m256 rng_scale = _mm256_mul_ps(root_three, _mm256_sqrt_ps(prev_var));
+	      
+	      res0 = _mm256_blendv_ps(i0, _mm256_mul_ps(rng.gen_floats(), rng_scale), _mm256_cmp_ps(w0, c, _CMP_LT_OS));
+	      res1 = _mm256_blendv_ps(i1, _mm256_mul_ps(rng.gen_floats(), rng_scale), _mm256_cmp_ps(w1, c, _CMP_LT_OS));
+	      res2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), rng_scale), _mm256_cmp_ps(w2, c, _CMP_LT_OS));
+	      res3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), rng_scale), _mm256_cmp_ps(w3, c, _CMP_LT_OS));
 	      
 	      // Store the new weight values
 	      _mm256_storeu_ps((float*) (weights + ifreq * stride + ichunk), w);
