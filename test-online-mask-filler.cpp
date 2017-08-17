@@ -127,7 +127,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	    {
 		cout << "Something's gone wrong! The running variances at frequency " << ifreq << " on iteration " << iter << " are unequal!" << endl;
 		cout << "Scalar output: " << running_var2[ifreq] << "\t\t Vectorized output: " << running_var[ifreq] << endl;
-		return false;
+		exit(1);
 	    }
 
 	    // Check running weights
@@ -135,7 +135,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 	    {
 		cout << "Something's gone wrong! The running weights at frequency " << ifreq << " on iteration " << iter << " are unequal!" << endl;
 		cout << "Scalar output: " << running_weights2[ifreq] << "\t\t Vectorized output: " << running_weights[ifreq] << endl;
-		return false;
+		exit(1);
 	    }
 	    
 	    for (int i=0; i<nt_chunk; i++)
@@ -146,7 +146,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 		    cout << "Something has gone wrong! The intensity array produced by the scalar mask filler does not match the intensity array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
 		    cout << "Scalar output: " << intensity2[ifreq * nt_chunk + i] << "\t\t Vectorized output: " << intensity[ifreq * nt_chunk + i] << endl;
-		    return false;
+		    exit(1);
 		}
 		
 		// Check weights
@@ -155,7 +155,7 @@ inline bool test_filler(int nfreq, int nt_chunk, float pfailv1, float pallzero, 
 		    cout << "Something has gone wrong! The weights array produced by the scalar mask filler does not match the weights array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
 		    cout << "Scalar output: " << weights2[ifreq * nt_chunk + i] << "\t\t Vectorized output: " << weights[ifreq * nt_chunk + i] << endl;
-		    return false;
+		    exit(1);
 		}
 	    }
 	}
@@ -200,7 +200,7 @@ inline bool test_xorshift(int niter=10000)
 		cout << "V code outputs: ";
 		print_vec(vrn_vec);
 		cout << "rng test failed on iteration " << iter << " and index " << i << ": scalar and vectorized prngs are out of sync!" << endl;
-		return false;
+		exit(1);
 	    }
 	}
     }
