@@ -173,8 +173,9 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 	  if (overwrite_on_wt0)
 	  {
 	      // If the running weight is 0, we want to set the running variance to the next successful v1 estimate and the running 
-	      // weight to w_clamp. To do this, make this mask rw_check that is all ones if prev_w is <= 0.0f.
+	      // weight to w_clamp. To do this, make this mask rw_check that is all ones if prev_w is <= 0.0f, and the v1 succeeded.
 	      rw_check = _mm256_cmp_ps(prev_w, zero, _CMP_LE_OS);
+	      rw_check = _mm256_and_ps(rw_check, mask);
 	  }
 	      
 	  // Here, we do the variance computation:
