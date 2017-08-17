@@ -1,6 +1,7 @@
 #include <iostream>
 #include "immintrin.h"
 
+#include "rf_kernels/internals.hpp"
 #include "rf_kernels/xorshift_plus.hpp"
 #include "rf_kernels/online_mask_filler.hpp"
 
@@ -113,6 +114,24 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
     const float var_clamp_add = params.var_clamp_add;
     const float var_clamp_mult = params.var_clamp_mult;
     const float w_cutoff = params.w_cutoff;
+    const int v1_chunk = params.v1_chunk;
+
+    if (v1_chunk != 32)
+	throw runtime_error("rf_kernels::online_mask_filler: only v1_chunk=32 is currently implemented");
+
+    rf_assert(nfreq > 0);
+    rf_assert(nt_chunk > 0);
+    rf_assert(nt_chunk % v1_chunk == 0);
+    rf_assert(var_weight > 0);
+    rf_assert(var_clamp_add >= 0);
+    rf_assert(var_clamp_mult >= 0);
+    rf_assert(w_clamp > 0);
+    rf_assert(w_cutoff > 0);
+    
+    rf_assert(intensity != nullptr);
+    rf_assert(weights != nullptr);
+    rf_assert(running_var != nullptr);
+    rf_assert(running_weights != nullptr);
     
     // Construct our random number generator object on the stack by initializing from the state kept in bonsai/online_mask_filler.c! 
     vec_xorshift_plus rng(rng_state);
