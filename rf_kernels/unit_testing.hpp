@@ -58,6 +58,7 @@ class timing_thread {
 public:
     const std::shared_ptr<timing_thread_pool> pool;
     const bool pinned_to_core;
+    const bool call_warm_up_cpu;
     const int thread_id;
     const int nthreads;
 
@@ -66,7 +67,7 @@ public:
     virtual ~timing_thread() { }
 
 protected:
-    timing_thread(const std::shared_ptr<timing_thread_pool> &pool, bool pin_to_core);
+    timing_thread(const std::shared_ptr<timing_thread_pool> &pool, bool pin_to_core, bool warm_up_cpu=true);
 
     virtual void thread_body() = 0;
 

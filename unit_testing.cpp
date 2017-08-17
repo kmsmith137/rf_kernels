@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstring>
 #include <climits>
+#include <unistd.h>
 #include "rf_kernels/unit_testing.hpp"
 
 using namespace std;
@@ -33,6 +34,22 @@ static void pin_current_thread_to_core(int core_id)
     if (err)
         throw runtime_error("pthread_setaffinity_np() failed");
 #endif
+}
+
+
+void warm_up_cpu()
+{
+    // A throwaway computation which uses the CPU for ~10^9
+    // clock cycles.  The details (usleep, xor) are to prevent the
+    // compiler from optimizing it out!
+    //
+    // Empirically, this makes timing results more stable (without it,
+    // the CPU seems to run slow for the first ~10^9 cycles or so.)
+
+    long n = 0;
+    for (long i = 0; i < 1000L * 1000L * 1000L; i++)
+	n += (i ^ (i-1));
+    usleep(n % 2);
 }
 
 
@@ -112,9 +129,10 @@ int timing_thread_pool::get_and_increment_thread_id()
 // timing_thread
 
 
-timing_thread::timing_thread(const shared_ptr<timing_thread_pool> &pool_, bool pin_to_core) :
+timing_thread::timing_thread(const shared_ptr<timing_thread_pool> &pool_, bool pin_to_core, bool warm_up_cpu_) :
     pool(pool_), 
     pinned_to_core(pin_to_core),
+    call_warm_up_cpu(warm_up_cpu_),
     thread_id(pool_->get_and_increment_thread_id()),
     nthreads(pool_->nthreads)
 { }
@@ -128,6 +146,10 @@ void timing_thread::_thread_main(timing_thread *t)
 
     if (t->pinned_to_core)
 	pin_current_thread_to_core(t->thread_id);
+
+    // Call after pinning thread
+    if (t->call_warm_up_cpu)
+	warm_up_cpu();
 
     t->thread_body();
 }
