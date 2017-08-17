@@ -77,7 +77,7 @@ inline __m256 var_est(__m256 w0, __m256 w1, __m256 w2, __m256 w3, __m256 i0, __m
     __m256 wi0123 = _mm256_fmadd_ps(_mm256_mul_ps(i3, i3), w3, wi012);
     __m256 vsum = hadd(wi0123);
     __m256 wsum = hadd(_mm256_add_ps(_mm256_add_ps(_mm256_add_ps(w0, w1), w2), w3));
-    wsum = _mm256_max_ps(wsum, _mm256_set1_ps(1.0));   // assumes all weights are 0 or 1
+    wsum = _mm256_max_ps(wsum, _mm256_set1_ps(1.0e-10));   // should be ok unless weights are very small
     return _mm256_div_ps(vsum, wsum);
 }
 
