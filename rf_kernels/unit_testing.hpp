@@ -178,6 +178,29 @@ protected:
 };
 
 
+// kernel_timing_params: this class parses command-line args assuming syntax
+//
+//   <prog_name> [-t NTHREADS] [-s STRIDE] [NFREQ] [NT]
+
+
+struct kernel_timing_params {
+    const std::string prog_name;
+
+    int nthreads = 1;
+    int nfreq = 16384;
+    int nt_chunk = 1024;
+    int stride = 0;
+
+    kernel_timing_params(const std::string &prog_name);
+
+    // If there is an error, parse_args() prints an error message and calls exit(1).
+    void parse_args(int argc, char **argv);
+    
+    // Helper for parse_args().
+    void usage(const char *msg=nullptr);
+};
+
+
 }  // namespace rf_kernels
 
 #endif  // _RF_KERNELS_UNIT_TESTING_HPP

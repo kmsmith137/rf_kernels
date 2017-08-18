@@ -388,4 +388,56 @@ bool argument_parser::_parse_args(int argc, char **argv)
 }
 
 
+// -------------------------------------------------------------------------------------------------
+//
+// kernel_timing_params
+
+
+kernel_timing_params::kernel_timing_params(const string &prog_name_)
+    : prog_name(prog_name_)
+{ }
+
+
+void kernel_timing_params::usage(const char *msg)
+{
+    cerr << "usage: " << prog_name << " [-t NTHREADS] [-s STRIDE] [NFREQ] [NT]" << endl;
+
+    if (msg != nullptr)
+	cerr << msg << endl;
+    
+    exit(2);
+}
+
+
+void kernel_timing_params::parse_args(int argc, char **argv)
+{
+    argument_parser p;
+    p.add_flag_with_parameter("-t", this->nthreads);
+    p.add_flag_with_parameter("-s", this->stride);
+
+    if (!p.parse_args(argc, argv))
+	usage();
+    
+    if (p.nargs > 2)
+	usage();
+    if (p.nargs >= 1)
+	nfreq = lexical_cast<int> (p.args[0], "nfreq");
+    if (p.nargs >= 2)
+	nfreq = lexical_cast<int> (p.args[1], "nt_chunk");
+    if (stride == 0)
+	stride = nt_chunk;
+    
+    if (nthreads <= 0)
+	usage("Fatal: nthreads must be > 0");
+    if (nfreq <= 0)
+	usage("Fatal: nfreq must be > 0");
+    if (nt_chunk <= 0)
+	usage("Fatal: nt_chunk must be > 0");
+    if (stride < nt_chunk)
+	usage("Fatal: stride must be >= nt_chunk");
+
+    cout << prog_name << ": nthreads=" << nthreads << ", nfreq=" << nfreq  << ", nt_chunk=" << nt_chunk << ", stride=" << stride << endl;
+}
+
+
 }  // namespace rf_kernels
