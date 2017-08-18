@@ -2,6 +2,8 @@
 #include <cstring>
 #include <climits>
 #include <unistd.h>
+
+#include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 
 using namespace std;
@@ -437,6 +439,62 @@ void kernel_timing_params::parse_args(int argc, char **argv)
 	usage("Fatal: stride must be >= nt_chunk");
 
     cout << prog_name << ": nthreads=" << nthreads << ", nfreq=" << nfreq  << ", nt_chunk=" << nt_chunk << ", stride=" << stride << endl;
+}
+
+
+// -------------------------------------------------------------------------------------------------
+//
+// kernel_timing_thread
+
+
+inline int _assign_niter(const kernel_timing_params &params)
+{
+    rf_assert(params.nfreq > 0);
+    rf_assert(params.nt_chunk > 0);
+
+    double x = 1.0e9 / double(params.nfreq) / double(params.nt_chunk);
+    return int(x) + 1;
+}
+
+kernel_timing_thread::kernel_timing_thread(const shared_ptr<timing_thread_pool> &pool_, const kernel_timing_params &params) :
+    timing_thread(pool_, true, true),    // (pin_to_core, warm_up_cpu) = (true, true)
+    niter(_assign_niter(params)),
+    nfreq(params.nfreq),
+    nt_chunk(params.nt_chunk),
+    stride(params.stride)
+{ 
+    // Note: we don't allocate 'intensity' and 'weights' in the 
+}
+
+
+kernel_timing_thread::~kernel_timing_thread()
+{
+    free(intensity);
+    free(weights);
+    intensity = weights = nullptr;
+}
+
+
+void kernel_timing_thread::allocate()
+{
+    if (!intensity)
+	intensity = aligned_alloc<float> (nfreq * stride);
+    if (!weights)
+	weights = aligned_alloc<float> (nfreq * stride);
+}
+
+
+void kernel_timing_thread::stop_timer2(const char *kernel_name)
+{
+    double dt = this->stop_timer();
+    ssize_t nsamples = ssize_t(niter) * ssize_t(nfreq) * ssize_t(nt_chunk);
+    
+    if (thread_id == 0) {
+	cout << kernel_name << ": " << niter << " iterations,"
+	     << " total time " << dt << " sec"
+	     << " (" << (dt/niter) << " sec/iteration,"
+	     << " " << (1.0e9 * dt / nsamples) << " ns/sample)" << endl;
+    }
 }
 
 

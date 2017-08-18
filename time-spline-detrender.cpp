@@ -169,70 +169,33 @@ static void _two_pass(int nfreq, int nt_chunk, int stride, float *intensity, flo
 }
 
 
-struct spline_detrender_timing_thread : public timing_thread {
-    const kernel_timing_params params;
-
+struct spline_detrender_timing_thread : public kernel_timing_thread {
     spline_detrender_timing_thread(const shared_ptr<timing_thread_pool> &pool_, const kernel_timing_params &params_) :
-	timing_thread(pool_, true),   // pin_to_core=true
-	params(params_)
+	kernel_timing_thread(pool_, params_)
     { }
-
-    virtual ~spline_detrender_timing_thread() { }
 
     virtual void thread_body() override 
     {
-	int nfreq = params.nfreq;
-	int stride = params.stride;
-	int nt_chunk = params.nt_chunk;
-
-	// Put memory allocations in thread_body(), not constructor, so that
-	// memory is allocated by the same CPU that runs the kernel.
-	//
-	// Note: no need to initialize intensity/weights arrays, since
-	// spline_detrender kernel contains no branches, so the timing
-	// will be independent of the array contents.
-	
-	float *intensity = aligned_alloc<float> (nfreq * stride);
-	float *weights = aligned_alloc<float> (nfreq * stride);
 	float *poly_vals = aligned_alloc<float> (64 * nfreq);
-	float *tmp = aligned_alloc<float> (64 * nt_chunk);
+	float *out = aligned_alloc<float> (64 * nt_chunk);
 
-	// Chosen arbitrarily!
-	const int nchunks = 64;
+	this->allocate();
+	this->start_timer();
+
+	for (int i = 0; i < niter; i++)
+	    _one_pass(nfreq, nt_chunk, stride, intensity, weights, poly_vals, out);
+	
+	this->stop_timer("spline_detrender: one-pass");
 
 	this->start_timer();
 
-	for (int i = 0; i < nchunks; i++)
-	    _one_pass(nfreq, nt_chunk, stride, intensity, weights, poly_vals, tmp);
-	
-	double dt = this->stop_timer();
-	ssize_t nsamples = ssize_t(nchunks) * ssize_t(nfreq) * ssize_t(nt_chunk);
+	for (int i = 0; i < niter; i++)
+	    _two_pass(nfreq, nt_chunk, stride, intensity, weights, poly_vals, out);
 
-	if (thread_id == 0) {
-	    cout << "one_pass: " << nchunks << " chunks,"
-		 << " total time " << dt << " sec"
-		 << " (" << (dt/nchunks) << " sec/chunk,"
-		 << " " << (1.0e9 * dt / nsamples) << " ns/sample)" << endl;
-	}
+	this->stop_timer("spline_detrender: two-pass");
 
-	this->start_timer();
-
-	for (int i = 0; i < nchunks; i++)
-	    _two_pass(nfreq, nt_chunk, stride, intensity, weights, poly_vals, tmp);
-	
-	dt = this->stop_timer();
-	nsamples = ssize_t(nchunks) * ssize_t(nfreq) * ssize_t(nt_chunk);
-
-	if (thread_id == 0) {
-	    cout << "two_pass: " << nchunks << " chunks,"
-		 << " total time " << dt << " sec"
-		 << " (" << (dt/nchunks) << " sec/chunk,"
-		 << " " << (1.0e9 * dt / nsamples) << " ns/sample)" << endl;
-	}
-
-	free(intensity);
-	free(weights);
-	free(tmp);
+	free(poly_vals);
+	free(out);
     }
 };
 

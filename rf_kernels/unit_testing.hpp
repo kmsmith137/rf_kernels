@@ -178,9 +178,14 @@ protected:
 };
 
 
+// -------------------------------------------------------------------------------------------------
+//
 // kernel_timing_params: this class parses command-line args assuming syntax
 //
-//   <prog_name> [-t NTHREADS] [-s STRIDE] [NFREQ] [NT]
+//    <prog_name> [-t NTHREADS] [-s STRIDE] [NFREQ] [NT]
+//
+// kernel_timing_thread: 
+//
 
 
 struct kernel_timing_params {
@@ -198,6 +203,28 @@ struct kernel_timing_params {
     
     // Helper for parse_args().
     void usage(const char *msg=nullptr);
+};
+
+
+struct kernel_timing_thread : timing_thread {
+    const int niter;
+    const int nfreq;
+    const int nt_chunk;
+    const int stride;
+
+    float *intensity = nullptr;
+    float *weights = nullptr;
+    
+    kernel_timing_thread(const std::shared_ptr<timing_thread_pool> &pool, const kernel_timing_params &params);
+    virtual ~kernel_timing_thread();
+
+    // Allocates 'intensity', 'weights'.
+    // Note that we don't do this in the constructor, since we want the allocation
+    // to be done from the thread's context, for core-pinning reasons.
+    void allocate();
+
+    // Prints timing info on thread id 0
+    void stop_timer2(const char *kernel_name);
 };
 
 
