@@ -31,20 +31,34 @@ namespace rf_kernels {
 }  // emacs pacifier
 #endif
 
+
+// We align to 128 bytes by default (size of an L3 cache line "pair")
 template<typename T>
-inline T *aligned_alloc(size_t nelts)
+inline T *aligned_alloc(size_t nelts, ssize_t nalign=128)
 {
+    rf_assert(nelts >= 0);
+    rf_assert(nalign > 0);
+
     if (nelts == 0)
 	return NULL;
 
-    // align to 128 bytes (size of an L3 cache line "pair")
     void *p = NULL;
-    if (posix_memalign(&p, 128, nelts * sizeof(T)) != 0)
+    if (posix_memalign(&p, nalign, nelts * sizeof(T)) != 0)
 	throw std::runtime_error("couldn't allocate memory");
 
     memset(p, 0, nelts * sizeof(T));
     return reinterpret_cast<T *> (p);
 }
+
+
+// Rounds 'nbytes' up to the nearest multiple of 'nalign'.
+inline ssize_t _align(ssize_t nbytes, ssize_t nalign=128)
+{
+    rf_assert(nbytes >= 0);
+    rf_assert(nalign > 0);
+    return ((nbytes + nalign - 1) / nalign) * nalign;
+}
+
 
 }  // namespace rf_kernels
 
