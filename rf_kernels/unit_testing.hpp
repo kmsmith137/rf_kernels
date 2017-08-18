@@ -188,7 +188,7 @@ struct kernel_timing_params {
 
     int nthreads = 1;
     int nfreq = 16384;
-    int nt_chunk = 1024;
+    int nt_chunk = 1032;
     int stride = 0;
 
     kernel_timing_params(const std::string &prog_name);
