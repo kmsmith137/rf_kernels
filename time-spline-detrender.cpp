@@ -24,12 +24,13 @@ static void _sum_weights(int nfreq, int nt_chunk, int stride, float *intensity, 
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    simd_t<float,8> p = simd_load<float,8> (poly_vals + 8*ifreq);
+	    simd_t<float,8> w = simd_load<float,8> (weights + ifreq*stride + it);
+
+#if 0
 	    simd_t<float,8> p0 = _mm256_permute_ps(p.x, 0x00);
 	    simd_t<float,8> p1 = _mm256_permute_ps(p.x, 0x55);
 	    simd_t<float,8> p2 = _mm256_permute_ps(p.x, 0xaa);
 	    simd_t<float,8> p3 = _mm256_permute_ps(p.x, 0xff);
-
-	    simd_t<float,8> w = simd_load<float,8> (weights + ifreq*stride + it);
 
 	    w00 += w * p0 * p0;
 	    w01 += w * p0 * p1;
@@ -41,6 +42,22 @@ static void _sum_weights(int nfreq, int nt_chunk, int stride, float *intensity, 
 	    w22 += w * p2 * p2;
 	    w23 += w * p2 * p3;
 	    w33 += w * p3 * p3;
+#else
+	    simd_t<float,8> q0 = _mm256_permute_ps(p.x, 0x00) * p.x;
+	    simd_t<float,8> q1 = _mm256_permute_ps(p.x, 0x55) * p.x;
+	    simd_t<float,8> q2 = _mm256_permute_ps(p.x, 0xfa) * _mm256_permute_ps(p.x, 0xee);
+
+	    w00 += w * _mm256_permute_ps(q0.x, 0x00);
+	    w01 += w * _mm256_permute_ps(q0.x, 0x55);
+	    w02 += w * _mm256_permute_ps(q0.x, 0xaa);
+	    w03 += w * _mm256_permute_ps(q0.x, 0xff);
+	    w11 += w * _mm256_permute_ps(q1.x, 0x55);
+	    w12 += w * _mm256_permute_ps(q1.x, 0xaa);
+	    w13 += w * _mm256_permute_ps(q1.x, 0xff);
+	    w22 += w * _mm256_permute_ps(q2.x, 0x00);
+	    w23 += w * _mm256_permute_ps(q2.x, 0x55);
+	    w33 += w * _mm256_permute_ps(q2.x, 0xff);
+#endif
 	}
 
 	simd_store(out + 10*it, w00);
@@ -86,7 +103,7 @@ struct spline_detrender_timing_thread : public timing_thread {
 	float *tmp = aligned_alloc<float> (64 * nt_chunk);
 
 	// Chosen arbitrarily!
-	const int nchunks = 256;
+	const int nchunks = 64;
 
 	this->start_timer();
 
