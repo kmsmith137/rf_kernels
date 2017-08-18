@@ -7,5 +7,5 @@ LIBDIR=$(HOME)/lib
 INCDIR=$(HOME)/include
 
 # C++ compiler, link flags
-CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops --param inline-unit-growth=10000
+CPP=g++ -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops --param inline-unit-growth=10000 -I. -I$(INCDIR)
 CPP_LFLAGS= -L. -L$(LIBDIR)
