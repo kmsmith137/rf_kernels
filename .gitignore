@@ -6,5 +6,6 @@ Makefile.local
 unittest_touchfiles
 
 test-online-mask-filler
+test-spline-detrender
 time-online-mask-filler
 time-spline-detrender

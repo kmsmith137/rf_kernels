@@ -9,6 +9,7 @@
 
 #include "rf_kernels/xorshift_plus.hpp"
 #include "rf_kernels/online_mask_filler.hpp"
+#include "rf_kernels/spline_detrender.hpp"
 
 // Note: rf_kernels/unit_testing.hpp is not included here!
 

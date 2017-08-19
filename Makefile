@@ -7,9 +7,9 @@
 # Note that INCFILES are in the rf_kernels/ subdirectory
 INCFILES = online_mask_filler.hpp xorshift_plus.hpp 
 
-OFILES = online_mask_filler.o
+OFILES = online_mask_filler.o spline_detrender.o
 
-TESTBINFILES = test-online-mask-filler
+TESTBINFILES = test-online-mask-filler test-spline-detrender
 TIMEBINFILES = time-online-mask-filler time-spline-detrender
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
@@ -65,10 +65,16 @@ unittest_touchfiles/ut_%: %
 online_mask_filler.o: online_mask_filler.cpp rf_kernels/internals.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
+spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spline_detrender.hpp
+	$(CPP) -c -o $@ $<
+
 unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
 	$(CPP) -c -o $@ $<
 
 test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+	$(CPP) -c -o $@ $<
+
+test-spline-detrender.o: test-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp
 	$(CPP) -c -o $@ $<
 
 time-online-mask-filler.o: time-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
@@ -82,6 +88,9 @@ librf_kernels.so: $(OFILES)
 	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-spline-detrender: test-spline-detrender.o spline_detrender.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-online-mask-filler: time-online-mask-filler.o online_mask_filler.o unit_testing.o
