@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <random>
+#include <cassert>
 #include <iostream>
 #include <sys/time.h>
 #include <condition_variable>
@@ -38,7 +39,19 @@ inline double uniform_rand(std::mt19937 &rng, double lo, double hi)
 
 inline ssize_t randint(std::mt19937 &rng, ssize_t lo, ssize_t hi)
 {
+    assert(lo < hi);
     return std::uniform_int_distribution<>(lo,hi-1)(rng);   // note hi-1 here!
+}
+
+inline std::vector<float> uniform_randvec(std::mt19937 &rng, ssize_t n, double lo, double hi)
+{
+    assert(n > 0);
+
+    std::vector<float> ret(n);
+    for (ssize_t i = 0; i < n; i++)
+	ret[i] = uniform_rand(rng, lo, hi);
+
+    return ret;
 }
 
 
