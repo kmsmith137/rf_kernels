@@ -57,6 +57,32 @@ inline std::vector<float> uniform_randvec(std::mt19937 &rng, ssize_t n, double l
 
 // -------------------------------------------------------------------------------------------------
 //
+// Misc inlines
+
+
+inline float maxdiff(const float *v, const float *w, ssize_t n)
+{
+    assert(n > 0);
+
+    float ret = std::abs(v[0]-w[0]);
+    for (ssize_t i = 1; i < n; i++)
+	ret = std::max(ret, std::abs(v[i]-w[i]));
+
+    return ret;
+}
+
+
+inline float maxdiff(const std::vector<float> &v, const std::vector<float> &w)
+{
+    assert(v.size() == w.size());
+    assert(v.size() > 0);
+
+    return maxdiff(&v[0], &w[0], v.size());
+}
+
+
+// -------------------------------------------------------------------------------------------------
+//
 // General-purpose timing thread
 
 

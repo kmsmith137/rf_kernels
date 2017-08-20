@@ -18,6 +18,44 @@ inline float xsqrt(float x)
 }
 
 
+inline float eval_cubic(float lval, float lderiv, float rval, float rderiv, float x)
+{
+    // P(x) = x^2 Q(x) + (1-x)^2 R(x)
+    //
+    // Q(1) = rval
+    // Q'(1) = rderiv - 2*rval
+    // R(0) = lval
+    // R'(0) = lderiv + 2*lval
+
+    float q = (rderiv-2*rval)*(x-1) + rval;
+    float r = (lderiv+2*lval)*x + lval;
+    return x*x*q + (1-x)*(1-x)*r;
+}
+
+
+void test_eval_cubic(std::mt19937 &rng)
+{
+    for (int iter = 0; iter < 10; iter++) {
+	float x = uniform_rand(rng, 0.0, 1.0);
+
+	float eps1 = 1.0 - eval_cubic(1,0,1,0,x);
+	float eps2 = x - eval_cubic(0,1,1,1,x);
+	float eps3 = x*x - eval_cubic(0,0,1,2,x);
+	float eps4 = x*x*x - eval_cubic(0,0,1,3,x);
+
+	rf_assert(abs(eps1) < 1.0e-6);
+	rf_assert(abs(eps2) < 1.0e-6);
+	rf_assert(abs(eps3) < 1.0e-6);
+	rf_assert(abs(eps4) < 1.0e-6);
+    }
+
+    cout << "test_eval_cubic: pass" << endl;
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
 struct vec2 {
     float v0 = 0.0;
     float v1 = 0.0;
@@ -39,8 +77,9 @@ struct mat2 {
     mat2() { }
     mat2(float a00_, float a01_, float a10_, float a11_) : a00(a00_), a01(a01_), a10(a10_), a11(a11_) { }
 
-    mat2 &operator+=(const mat2 &m) { a00 += m.a00; a01 += m.a01; a10 += m.a10; a11 += m.a11; return *this; }
-    mat2 operator-(const mat2 &m) { return mat2(a00-m.a00, a01-m.a01, a10-m.a10, a11-m.a11); }
+    mat2 &operator+=(const mat2 &m)  { a00 += m.a00; a01 += m.a01; a10 += m.a10; a11 += m.a11; return *this; }
+    mat2 &operator*=(float t)        { a00 *= t; a01 *= t; a10 *= t; a11 *= t; return *this; }
+    mat2 operator-(const mat2 &m)    { return mat2(a00-m.a00, a01-m.a01, a10-m.a10, a11-m.a11); }
 
     inline mat2 transpose() const { return mat2(a00,a10,a01,a11); }
 
@@ -116,6 +155,10 @@ struct refsd_params {
     // 'out' has length nx, 'coeffs' has length (2*nbins+2).
     void eval_model(float *out, const float *coeffs);
 
+    // Like eval_model(), except that instead of using precomputed poly_vals,
+    // we evaluate polynomials "from scratch" using eval_cubic().
+    void eval_model_from_scratch(float *out, const float *coeffs);
+
     // 'ninv' has length 16, 'ninvx' has length 4, intensity+weights have length nx.
     void analyze_bin(float *ninv, float *ninvx, const float *intensity, const float *weights, int b);
 
@@ -141,6 +184,16 @@ void refsd_params::eval_model(float *out, const float *coeffs)
 	for (int i = bin_delim[b]; i < bin_delim[b+1]; i++)
 	    for (int p = 0; p < 4; p++)
 		out[i] += coeffs[2*b+p] * poly_vals[4*i+p];
+}
+
+
+void refsd_params::eval_model_from_scratch(float *out, const float *coeffs)
+{
+    for (int i = 0; i < nx; i++) {
+	float x = (i+0.5) / float(nx) * float(nbins);   // note: 0 < x < nbins
+	int b = int(x);
+	out[i] = eval_cubic(coeffs[2*b], coeffs[2*b+1], coeffs[2*b+2], coeffs[2*b+3], x-b);
+    }
 }
 
 
@@ -188,6 +241,7 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 	// B^T A^{-1} v = B^T L^{-T} L^{-1} v
 	a_prev = c - linvb.transpose() * linvb;
 	v_prev = w - linvb.transpose() * (linv * v);
+	// cout << "A = " << a_prev << ", v = " << v_prev << endl;
     }
 
     vec2 c_prev = solve(a_prev, v_prev);
@@ -204,8 +258,10 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 	vec2 v(ninvx[0], ninvx[1]);
 
 	c_prev = solve(a, v - b * c_prev);
+	// c_prev = solve(a, b * c_prev);
 	coeffs[2*b0] = c_prev.v0;
 	coeffs[2*b0+1] = c_prev.v1;
+	// cout << "A = " << a << ", b = " << b << ", c = " << c_prev << endl;
     }
 }
 
@@ -218,27 +274,30 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
     refsd_params params(nx, nbins);
     
     vector<float> intensity(nx, 0.0);
-    vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
+    vector<float> intensity2(nx, 0.0);
+    // vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
+    vector<float> weights(nx, 1.0);
 
     vector<float> in_coeffs = uniform_randvec(rng, 2*nbins+2, -1.0, 1.0);
     params.eval_model(&intensity[0], &in_coeffs[0]);
+    params.eval_model_from_scratch(&intensity2[0], &in_coeffs[0]);
 
+    cout << "eval_model comparison: " << nx << " " << nbins << " " << maxdiff(intensity,intensity2) << endl;
+    
     vector<float> out_coeffs(2*nbins+2, 0.0);
     params.fit_model(&out_coeffs[0], &intensity[0], &weights[0]);
 
-    double t = 0.0;
-    for (int i = 0; i < 2*nbins+2; i++)
-	t += abs(in_coeffs[i] - out_coeffs[i]) / (2*nbins+2);
-
-    cout << nx << " " << nbins << " " << t << endl;
+    cout << "fit_model comparison: " << nx << " " << nbins << " " << maxdiff(in_coeffs,out_coeffs) << endl;
 }
 
 
 static void test_reference_spline_detrender(std::mt19937 &rng)
 {
-    for (int iter = 0; iter < 1000; iter++) {
-	int nx = randint(rng, 32, 1000);
-	int nbins = randint(rng, 1, min(nx/32+1,21));
+    for (int iter = 0; iter < 5; iter++) {
+	// int nx = randint(rng, 32, 1000);
+	// int nbins = randint(rng, 1, min(nx/32+1,21));
+	int nx = 1600;
+	int nbins = 40;
 	test_reference_spline_detrender(rng, nx, nbins);
     }
 
@@ -254,6 +313,7 @@ int main(int argc, char **argv)
     std::random_device rd;
     std::mt19937 rng(rd());
 
+    test_eval_cubic(rng);
     test_reference_spline_detrender(rng);
 
     return 0;
