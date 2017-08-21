@@ -95,34 +95,30 @@ struct mat2 {
 };
 
 
-// Assumes 'a' is a symmetric matrix!
-static void cholesky(mat2 &l, mat2 &linv, const mat2 &a)
-{
-    l.a00 = xsqrt(a.a00);
-    l.a01 = 0.0;
-    l.a10 = a.a01 / l.a00;
-    l.a11 = xsqrt(a.a11 - l.a10*l.a10);
+struct chol2 {
+    mat2 lmat;
+    mat2 linv;
 
-    // These checks should apply if all weights are positive.
-    rf_assert(a.a00 > 0.0);
-    rf_assert(a.a11 > 0.0);
-    rf_assert(l.a10*l.a10 <= 0.999 * a.a11);
-    
-    linv.a00 = 1.0 / l.a00;
-    linv.a01 = 0.0;
-    linv.a10 = -l.a10 / (l.a00 * l.a11);
-    linv.a11 = 1.0 / l.a11;
-}
+    chol2() { }
 
-
-// Assumes 'a' is a symmetric matrix!
-static vec2 solve(const mat2 &a, const vec2 &v)
-{
-    mat2 l, linv;
-    cholesky(l, linv, a);
-    
-    return linv.transpose() * (linv * v);
-}
+    explicit chol2(const mat2 &a) 
+    {
+	lmat.a00 = xsqrt(a.a00);
+	lmat.a01 = 0.0;
+	lmat.a10 = a.a01 / lmat.a00;
+	lmat.a11 = xsqrt(a.a11 - lmat.a10*lmat.a10);
+	
+	// These checks should apply if all weights are positive.
+	rf_assert(a.a00 > 0.0);
+	rf_assert(a.a11 > 0.0);
+	rf_assert(lmat.a10*lmat.a10 <= 0.999 * a.a11);
+	
+	linv.a00 = 1.0 / lmat.a00;
+	linv.a01 = 0.0;
+	linv.a10 = -lmat.a10 / (lmat.a00 * lmat.a11);
+	linv.a11 = 1.0 / lmat.a11;
+    }
+};
 
 
 inline ostream &operator<<(ostream &os, const vec2 &v) 
@@ -134,6 +130,12 @@ inline ostream &operator<<(ostream &os, const vec2 &v)
 inline ostream &operator<<(ostream &os, const mat2 &m)
 {
     os << "mat2(" << m.a00 << ", " << m.a01 << ", " << m.a10 << ", " << m.a11 << ")";
+    return os;
+}
+
+inline ostream &operator<<(ostream &os, const chol2 &c)
+{
+    os << "chol2(lmat=" << c.lmat << ", linv=" << c.linv << ")";
     return os;
 }
 
@@ -215,53 +217,48 @@ void refsd_params::analyze_bin(float ninv[16], float ninvx[4], const float *inte
 
 void refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights)
 {
-    mat2 a_prev;
-    vec2 v_prev;
+    vector<mat2> ninv_diag(nbins+1);
+    vector<mat2> ninv_subdiag(nbins+1);
+    vector<vec2> ninv_x(nbins+1);
     
-    for (int b0 = 0; b0 < nbins; b0++) {
-	float ninv[16];
-	float ninvx[4];
-	analyze_bin(ninv, ninvx, intensity, weights, b0);
+    for (int b = 0; b < nbins; b++) {
+	float ninv_bin[16];
+	float ninvx_bin[4];
+	analyze_bin(ninv_bin, ninvx_bin, intensity, weights, b);
 
-	mat2 a(ninv[0], ninv[1], ninv[4], ninv[5]);
-	mat2 b(ninv[2], ninv[3], ninv[6], ninv[7]);
-	mat2 c(ninv[10], ninv[11], ninv[14], ninv[15]);
-	vec2 v(ninvx[0], ninvx[1]);
-	vec2 w(ninvx[2], ninvx[3]);
-
-	a += a_prev;
-	v += v_prev;
-
-	mat2 l, linv;
-	cholesky(l, linv, a);
-
-	mat2 linvb = linv * b;
-
-	// B^T A^{-1} B = B^T L^{-T} L^{-1} B
-	// B^T A^{-1} v = B^T L^{-T} L^{-1} v
-	a_prev = c - linvb.transpose() * linvb;
-	v_prev = w - linvb.transpose() * (linv * v);
-	// cout << "A = " << a_prev << ", v = " << v_prev << endl;
+	ninv_diag[b] += mat2(ninv_bin[0], ninv_bin[1], ninv_bin[4], ninv_bin[5]);
+	ninv_diag[b+1] += mat2(ninv_bin[10], ninv_bin[11], ninv_bin[14], ninv_bin[15]);
+	ninv_subdiag[b] += mat2(ninv_bin[8], ninv_bin[9], ninv_bin[12], ninv_bin[13]);
+	ninv_x[b] += vec2(ninvx_bin[0], ninvx_bin[1]);
+	ninv_x[b+1] += vec2(ninvx_bin[2], ninvx_bin[3]);
     }
 
-    vec2 c_prev = solve(a_prev, v_prev);
-    coeffs[2*nbins] = c_prev.v0;
-    coeffs[2*nbins+1] = c_prev.v1;
+    vector<chol2> cholesky_diag(nbins+1);
+    vector<mat2> cholesky_subdiag(nbins);
 
-    for (int b0 = nbins-1; b0 >= 0; b0--) {
-	float ninv[16];
-	float ninvx[4];
-	analyze_bin(ninv, ninvx, intensity, weights, b0);
-	
-	mat2 a(ninv[0], ninv[1], ninv[4], ninv[5]);
-	mat2 b(ninv[2], ninv[3], ninv[6], ninv[7]);
-	vec2 v(ninvx[0], ninvx[1]);
+    cholesky_diag[0] = chol2(ninv_diag[0]);
+    
+    for (int b = 0; b < nbins; b++) {
+	cholesky_subdiag[b] = ninv_subdiag[b] * cholesky_diag[b].linv.transpose();
+	cholesky_diag[b+1] = chol2(ninv_diag[b+1] - cholesky_subdiag[b] * cholesky_subdiag[b].transpose());
+    }
 
-	c_prev = solve(a, v - b * c_prev);
-	// c_prev = solve(a, b * c_prev);
-	coeffs[2*b0] = c_prev.v0;
-	coeffs[2*b0+1] = c_prev.v1;
-	// cout << "A = " << a << ", b = " << b << ", c = " << c_prev << endl;
+    vector<vec2> w(nbins+1);
+    vector<vec2> v(nbins+1);
+
+    // Lw = ninv_x
+    w[0] = cholesky_diag[0].linv * ninv_x[0];
+    for (int b = 1; b <= nbins; b++)
+	w[b] = cholesky_diag[b].linv * (ninv_x[b] - cholesky_subdiag[b-1] * w[b-1]);
+
+    // L^T v = w
+    v[nbins] = cholesky_diag[nbins].linv.transpose() * w[nbins];
+    for (int b = nbins-1; b >= 0; b--)
+	v[b] = cholesky_diag[b].linv.transpose() * (w[b] - cholesky_subdiag[b].transpose() * v[b+1]);
+
+    for (int b = 0; b <= nbins; b++) {
+	coeffs[2*b] = v[b].v0;
+	coeffs[2*b+1] = v[b].v1;
     }
 }
 
@@ -275,29 +272,34 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
     
     vector<float> intensity(nx, 0.0);
     vector<float> intensity2(nx, 0.0);
-    // vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
-    vector<float> weights(nx, 1.0);
+    vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
 
     vector<float> in_coeffs = uniform_randvec(rng, 2*nbins+2, -1.0, 1.0);
     params.eval_model(&intensity[0], &in_coeffs[0]);
     params.eval_model_from_scratch(&intensity2[0], &in_coeffs[0]);
 
-    cout << "eval_model comparison: " << nx << " " << nbins << " " << maxdiff(intensity,intensity2) << endl;
+    float eps1 = maxdiff(intensity, intensity2);
+    if (eps1 > 1.0e-4) {
+	cout << "refsd::eval_model comparison failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps1 << endl;
+	exit(2);
+    }
     
     vector<float> out_coeffs(2*nbins+2, 0.0);
     params.fit_model(&out_coeffs[0], &intensity[0], &weights[0]);
 
-    cout << "fit_model comparison: " << nx << " " << nbins << " " << maxdiff(in_coeffs,out_coeffs) << endl;
+    float eps2 = maxdiff(intensity, intensity2);
+    if (eps2 > 1.0e-4) {
+	cout << "refsd::fit_model comparison failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps2 << endl;
+	exit(2);
+    }
 }
 
 
 static void test_reference_spline_detrender(std::mt19937 &rng)
 {
-    for (int iter = 0; iter < 5; iter++) {
-	// int nx = randint(rng, 32, 1000);
-	// int nbins = randint(rng, 1, min(nx/32+1,21));
-	int nx = 1600;
-	int nbins = 40;
+    for (int iter = 0; iter < 1000; iter++) {
+	int nbins = randint(rng, 1, 100);
+	int nx = randint(rng, 32*nbins, 128*nbins);
 	test_reference_spline_detrender(rng, nx, nbins);
     }
 
