@@ -64,7 +64,7 @@ struct vec2 {
     vec2(float v0_, float v1_) : v0(v0_), v1(v1_) { }
 
     vec2 &operator+=(const vec2 &v) { v0 += v.v0; v1 += v.v1; return *this; }
-    vec2 operator-(const vec2 &v) { return vec2(v0-v.v0, v1-v.v1); }
+    vec2 operator-(const vec2 &v) const { return vec2(v0-v.v0, v1-v.v1); }
 };
 
 
@@ -138,6 +138,66 @@ inline ostream &operator<<(ostream &os, const chol2 &c)
     os << "chol2(lmat=" << c.lmat << ", linv=" << c.linv << ")";
     return os;
 }
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+struct big_cholesky {
+    int nbins = 0;
+    vector<mat2> a_diag;            // length (nbins+1)
+    vector<mat2> a_subdiag;         // length (nbins)
+    vector<chol2> cholesky_diag;    // length (nbins+1)
+    vector<mat2> cholesky_subdiag;  // length (nbins)
+
+    big_cholesky(const vector<mat2> &a_diag_, const vector<mat2> &a_subdiag_)
+	: a_diag(a_diag_), a_subdiag(a_subdiag_)
+    {
+	rf_assert(a_diag.size() == a_subdiag.size()+1);
+
+	this->nbins = a_subdiag.size();
+	this->cholesky_diag.resize(nbins+1);
+	this->cholesky_subdiag.resize(nbins);
+
+	cholesky_diag[0] = chol2(a_diag[0]);
+	
+	for (int b = 0; b < nbins; b++) {
+	    cholesky_subdiag[b] = a_subdiag[b] * cholesky_diag[b].linv.transpose();
+	    cholesky_diag[b+1] = chol2(a_diag[b+1] - cholesky_subdiag[b] * cholesky_subdiag[b].transpose());
+	}
+    }
+
+    vector<vec2> apply_linv(const vector<vec2> &v)
+    {
+	rf_assert((int)v.size() == nbins+1);
+
+	vector<vec2> ret(nbins+1);
+
+	ret[0] = cholesky_diag[0].linv * v[0];
+	for (int b = 1; b <= nbins; b++)
+	    ret[b] = cholesky_diag[b].linv * (v[b] - cholesky_subdiag[b-1] * ret[b-1]);
+
+	return ret;
+    }
+
+    vector<vec2> apply_ltinv(const vector<vec2> &v)
+    {
+	rf_assert((int)v.size() == nbins+1);
+
+	vector<vec2> ret(nbins+1);
+	
+	ret[nbins] = cholesky_diag[nbins].linv.transpose() * v[nbins];
+	for (int b = nbins-1; b >= 0; b--)
+	    ret[b] = cholesky_diag[b].linv.transpose() * (v[b] - cholesky_subdiag[b].transpose() * ret[b+1]);
+
+	return ret;
+    }
+
+    vector<vec2> apply_ainv(const vector<vec2> &v)
+    {
+	return apply_ltinv(apply_linv(v));
+    }
+};
 
 
 // -------------------------------------------------------------------------------------------------
@@ -218,7 +278,7 @@ void refsd_params::analyze_bin(float ninv[16], float ninvx[4], const float *inte
 void refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights)
 {
     vector<mat2> ninv_diag(nbins+1);
-    vector<mat2> ninv_subdiag(nbins+1);
+    vector<mat2> ninv_subdiag(nbins);
     vector<vec2> ninv_x(nbins+1);
     
     for (int b = 0; b < nbins; b++) {
@@ -233,28 +293,8 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 	ninv_x[b+1] += vec2(ninvx_bin[2], ninvx_bin[3]);
     }
 
-    vector<chol2> cholesky_diag(nbins+1);
-    vector<mat2> cholesky_subdiag(nbins);
-
-    cholesky_diag[0] = chol2(ninv_diag[0]);
-    
-    for (int b = 0; b < nbins; b++) {
-	cholesky_subdiag[b] = ninv_subdiag[b] * cholesky_diag[b].linv.transpose();
-	cholesky_diag[b+1] = chol2(ninv_diag[b+1] - cholesky_subdiag[b] * cholesky_subdiag[b].transpose());
-    }
-
-    vector<vec2> w(nbins+1);
-    vector<vec2> v(nbins+1);
-
-    // Lw = ninv_x
-    w[0] = cholesky_diag[0].linv * ninv_x[0];
-    for (int b = 1; b <= nbins; b++)
-	w[b] = cholesky_diag[b].linv * (ninv_x[b] - cholesky_subdiag[b-1] * w[b-1]);
-
-    // L^T v = w
-    v[nbins] = cholesky_diag[nbins].linv.transpose() * w[nbins];
-    for (int b = nbins-1; b >= 0; b--)
-	v[b] = cholesky_diag[b].linv.transpose() * (w[b] - cholesky_subdiag[b].transpose() * v[b+1]);
+    big_cholesky bc(ninv_diag, ninv_subdiag);
+    vector<vec2> v = bc.apply_ainv(ninv_x);
 
     for (int b = 0; b <= nbins; b++) {
 	coeffs[2*b] = v[b].v0;
