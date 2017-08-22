@@ -64,8 +64,8 @@ inline float maxdiff(const float *v, const float *w, ssize_t n)
 {
     assert(n > 0);
 
-    float ret = std::abs(v[0]-w[0]);
-    for (ssize_t i = 1; i < n; i++)
+    float ret = 0.0;
+    for (ssize_t i = 0; i < n; i++)
 	ret = std::max(ret, std::abs(v[i]-w[i]));
 
     return ret;
@@ -78,6 +78,24 @@ inline float maxdiff(const std::vector<float> &v, const std::vector<float> &w)
     assert(v.size() > 0);
 
     return maxdiff(&v[0], &w[0], v.size());
+}
+
+
+inline float maxabs(const float *v, ssize_t n)
+{
+    assert(n > 0);
+
+    float ret = 0.0;
+    for (ssize_t i = 0; i < n; i++)
+	ret = std::max(ret, std::abs(v[i]));
+
+    return ret;
+}
+
+
+inline float maxabs(const std::vector<float> &v)
+{
+    return maxabs(&v[0], v.size());
 }
 
 

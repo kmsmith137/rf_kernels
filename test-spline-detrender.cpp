@@ -102,17 +102,38 @@ struct chol2 {
 
     chol2() { }
 
-    explicit chol2(const mat2 &a) 
+    explicit chol2(const mat2 &a, bool regulate)
     {
-	lmat.a00 = xsqrt(a.a00);
+	float a00 = regulate ? (1.01 * a.a00) : a.a00;
+	float a11 = regulate ? (1.01 * a.a11) : a.a11;
+	float a01 = a.a01;
+
+	if (!regulate) {
+	    rf_assert(a00 > 0.0);
+	    rf_assert(a11 > 0.0);
+	    rf_assert(a00 * a11 > 1.0001 * a01 * a01);
+	}
+	else {
+	    rf_assert(a00 >= 0.0);
+	    rf_assert(a11 >= 0.0);
+	    rf_assert(a00 * a11 >= 1.0001 * a01 * a01);
+	}
+
+	if (a01 == 0.0) {
+	    lmat.a00 = xsqrt(a00);
+	    lmat.a11 = xsqrt(a11);
+	    linv.a00 = (a00 > 0.0) ? (1.0 / lmat.a00) : 0.0;
+	    linv.a11 = (a00 > 0.0) ? (1.0 / lmat.a00) : 0.0;
+	    return;
+	}
+
+	rf_assert(a00 > 0.0);
+	rf_assert(a11 > 0.0);
+
+	lmat.a00 = xsqrt(a00);
 	lmat.a01 = 0.0;
-	lmat.a10 = a.a01 / lmat.a00;
-	lmat.a11 = xsqrt(a.a11 - lmat.a10*lmat.a10);
-	
-	// These checks should apply if all weights are positive.
-	rf_assert(a.a00 > 0.0);
-	rf_assert(a.a11 > 0.0);
-	rf_assert(lmat.a10*lmat.a10 <= 0.999 * a.a11);
+	lmat.a10 = a01 / lmat.a00;
+	lmat.a11 = xsqrt(a11 - lmat.a10*lmat.a10);
 	
 	linv.a00 = 1.0 / lmat.a00;
 	linv.a01 = 0.0;
@@ -151,7 +172,7 @@ struct big_cholesky {
     vector<chol2> cholesky_diag;    // length (nbins+1)
     vector<mat2> cholesky_subdiag;  // length (nbins)
 
-    big_cholesky(const vector<mat2> &a_diag_, const vector<mat2> &a_subdiag_)
+    big_cholesky(const vector<mat2> &a_diag_, const vector<mat2> &a_subdiag_, bool regulate)
 	: a_diag(a_diag_), a_subdiag(a_subdiag_)
     {
 	rf_assert(a_diag.size() == a_subdiag.size()+1);
@@ -160,11 +181,11 @@ struct big_cholesky {
 	this->cholesky_diag.resize(nbins+1);
 	this->cholesky_subdiag.resize(nbins);
 
-	cholesky_diag[0] = chol2(a_diag[0]);
+	cholesky_diag[0] = chol2(a_diag[0], regulate);
 	
 	for (int b = 0; b < nbins; b++) {
 	    cholesky_subdiag[b] = a_subdiag[b] * cholesky_diag[b].linv.transpose();
-	    cholesky_diag[b+1] = chol2(a_diag[b+1] - cholesky_subdiag[b] * cholesky_subdiag[b].transpose());
+	    cholesky_diag[b+1] = chol2(a_diag[b+1] - cholesky_subdiag[b] * cholesky_subdiag[b].transpose(), regulate);
 	}
     }
 
@@ -232,6 +253,10 @@ struct big_cholesky {
 		epsilon = max(epsilon, residual[b].v0);
 		epsilon = max(epsilon, residual[b].v1);
 	    }
+
+#if 1
+	    cout << "apply_ainv iter=" << iter << ": epsilon=" << epsilon << endl;
+#endif
 	}
 
 	return ret;
@@ -264,6 +289,8 @@ struct refsd_params {
     void analyze_bin(float *ninv, float *ninvx, const float *intensity, const float *weights, int b);
 
     void fit_model(float *coeffs, const float *intensity, const float *weights);
+
+    void detrend(float *intensity, const float *weights);
 };
 
 
@@ -332,13 +359,26 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 	ninv_x[b+1] += vec2(ninvx_bin[2], ninvx_bin[3]);
     }
 
-    big_cholesky bc(ninv_diag, ninv_subdiag);
-    vector<vec2> v = bc.apply_ainv(ninv_x);
+    big_cholesky bc(ninv_diag, ninv_subdiag, true);  // regulate=true
+    vector<vec2> v = bc.apply_ainv(ninv_x, 20);      // niter=20
 
     for (int b = 0; b <= nbins; b++) {
 	coeffs[2*b] = v[b].v0;
 	coeffs[2*b+1] = v[b].v1;
     }
+}
+
+
+void refsd_params::detrend(float *intensity, const float *weights)
+{
+    vector<float> coeffs(2*nbins+2);
+    fit_model(&coeffs[0], intensity, weights);
+    
+    vector<float> intensity_fit(nx);
+    eval_model(&intensity_fit[0], &coeffs[0]);
+
+    for (int i = 0; i < nx; i++)
+	intensity[i] -= intensity_fit[i];
 }
 
 
@@ -348,28 +388,66 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins)
 {
     refsd_params params(nx, nbins);
+
+    //
+    // Test 1: compare refsd_params::eval_model() and refsd_params::eval_model_from_scratch().
+    // This indirectly the poly_vals generation in _spline_detrender_init().
+    //
     
     vector<float> intensity(nx, 0.0);
-    vector<float> intensity2(nx, 0.0);
-    vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
-
     vector<float> in_coeffs = uniform_randvec(rng, 2*nbins+2, -1.0, 1.0);
     params.eval_model(&intensity[0], &in_coeffs[0]);
+
+    vector<float> intensity2(nx, 0.0);
     params.eval_model_from_scratch(&intensity2[0], &in_coeffs[0]);
 
     float eps1 = maxdiff(intensity, intensity2);
     if (eps1 > 1.0e-4) {
-	cout << "refsd::eval_model comparison failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps1 << endl;
-	exit(2);
+	cout << "refsd::eval_model() failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps1 << endl;
+	exit(1);
     }
+
+    //
+    // Test 2: check that refsd_params::fit_model() recovers the coefficients.
+    // For this test, we use weights which are all positive.
+    //
+
+    vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
     
     vector<float> out_coeffs(2*nbins+2, 0.0);
     params.fit_model(&out_coeffs[0], &intensity[0], &weights[0]);
 
     float eps2 = maxdiff(in_coeffs, out_coeffs);
     if (eps2 > 1.0e-4) {
-	cout << "refsd::fit_model comparison failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps2 << endl;
-	exit(2);
+	cout << "refsd::fit_model() failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps2 << endl;
+	exit(1);
+    }
+
+    //
+    // Test 3: check that refsd_params::detrend_model() zeroes the timestream.
+    // For this test, we can use weights with lots of zeros!
+    //
+    
+    memset(&weights[0], 0, nx * sizeof(float));
+
+    for (int b = 0; b < nbins; b++) {
+	int n = params.bin_delim[b+1] - params.bin_delim[b];
+
+	// Number of nonzero weights, chosen to sample "interesting" matrix ranks.
+	int nz = randint(rng,0,2) ? randint(rng,0,4) : randint(rng,0,n+1);
+	
+	for (int iz = 0; iz < nz; iz++) {
+	    int i = randint(rng, params.bin_delim[b], params.bin_delim[b+1]);
+	    weights[i] = uniform_rand(rng);
+	}
+    }
+
+    params.detrend(&intensity[0], &weights[0]);
+
+    float eps3 = maxabs(intensity);
+    if (eps3 > 1.0e-4) {
+	cout << "refsd::detrend() failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps3 << endl;
+	exit(1);
     }
 }
 
