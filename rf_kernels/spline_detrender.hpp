@@ -13,6 +13,8 @@ namespace rf_kernels {
 #endif
 
 
+// 'bin_delim' is a 1D array of length (nbins+1).
+// 'poly_vals' is a 2D array of shape (nx,4).
 extern void _spline_detrender_init(int *bin_delim, float *poly_vals, int nx, int nbins);
 
 

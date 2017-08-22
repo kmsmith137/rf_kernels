@@ -83,7 +83,7 @@ time-memory-access-patterns.o: time-memory-access-patterns.cpp rf_kernels/intern
 time-online-mask-filler.o: time-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-time-spline-detrender.o: time-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
+time-spline-detrender.o: time-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp
 	$(CPP) -c -o $@ $<
 
 
@@ -102,5 +102,5 @@ time-memory-access-patterns: time-memory-access-patterns.o unit_testing.o
 time-online-mask-filler: time-online-mask-filler.o online_mask_filler.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
-time-spline-detrender: time-spline-detrender.o unit_testing.o
+time-spline-detrender: time-spline-detrender.o unit_testing.o spline_detrender.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
