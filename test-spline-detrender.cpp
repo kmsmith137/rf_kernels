@@ -64,6 +64,7 @@ struct vec2 {
     vec2(float v0_, float v1_) : v0(v0_), v1(v1_) { }
 
     vec2 &operator+=(const vec2 &v) { v0 += v.v0; v1 += v.v1; return *this; }
+    vec2 &operator-=(const vec2 &v) { v0 -= v.v0; v1 -= v.v1; return *this; }
     vec2 operator-(const vec2 &v) const { return vec2(v0-v.v0, v1-v.v1); }
 };
 
@@ -167,6 +168,23 @@ struct big_cholesky {
 	}
     }
 
+    vector<vec2> apply_a(const vector<vec2> &v)
+    {
+	rf_assert((int)v.size() == nbins+1);
+
+	vector<vec2> ret(nbins+1);
+	
+	for (int b = 0; b <= nbins; b++)
+	    ret[b] = a_diag[b] * v[b];
+
+	for (int b = 0; b < nbins; b++) {
+	    ret[b+1] += a_subdiag[b] * v[b];
+	    ret[b] += a_subdiag[b].transpose() * v[b+1];
+	}
+	
+	return ret;
+    }
+
     vector<vec2> apply_linv(const vector<vec2> &v)
     {
 	rf_assert((int)v.size() == nbins+1);
@@ -193,9 +211,30 @@ struct big_cholesky {
 	return ret;
     }
 
-    vector<vec2> apply_ainv(const vector<vec2> &v)
+    vector<vec2> apply_ainv(const vector<vec2> &v, int niter=1)
     {
-	return apply_ltinv(apply_linv(v));
+	rf_assert((int)v.size() == nbins+1);
+
+	vector<vec2> ret(nbins+1);
+	vector<vec2> residual = v;
+
+	for (int iter = 0; iter < niter; iter++) {
+	    vector<vec2> w = apply_ltinv(apply_linv(residual));
+	    
+	    for (int b = 0; b <= nbins; b++)
+		ret[b] += w[b];
+
+	    vector<vec2> aret = apply_a(ret);
+	    float epsilon = 0.0;
+
+	    for (int b = 0; b <= nbins; b++) {
+		residual[b] = v[b] - aret[b];
+		epsilon = max(epsilon, residual[b].v0);
+		epsilon = max(epsilon, residual[b].v1);
+	    }
+	}
+
+	return ret;
     }
 };
 
@@ -327,7 +366,7 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
     vector<float> out_coeffs(2*nbins+2, 0.0);
     params.fit_model(&out_coeffs[0], &intensity[0], &weights[0]);
 
-    float eps2 = maxdiff(intensity, intensity2);
+    float eps2 = maxdiff(in_coeffs, out_coeffs);
     if (eps2 > 1.0e-4) {
 	cout << "refsd::fit_model comparison failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps2 << endl;
 	exit(2);
