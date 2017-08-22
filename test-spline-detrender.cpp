@@ -11,11 +11,20 @@ using namespace rf_kernels;
 // Helpers
 
 
-inline float xsqrt(float x)
-{
-    rf_assert(x >= 0.0);
-    return sqrt(x);
-}
+// The meaning of this matrix needs a little explanation!
+//
+// We represent cubic polynomials p(x) on the unit interval [0,1]
+// by a four-component vector v_i = (p(0), p'(0), p(1), p'(1)).
+//
+// In this basis, the quadratic form Q = int_0^1 (dp/dx)^2 dx
+// is represented by a 4-by-4 symmetric matrix Q_{ij} v_i v_j.
+
+static float reg_matrix[16] = {
+       (6./5.),  (1./10.),  (-6./5.),  (1./10.),
+      (1./10.),  (2./15.), (-1./10.), (-1./30.),
+      (-6./5.), (-1./10.),   (6./5.), (-1./10.),
+      (1./10.), (-1./30.), (-1./10.),  (2./15.)
+};
 
 
 inline float eval_cubic(float lval, float lderiv, float rval, float rderiv, float x)
@@ -51,6 +60,7 @@ void test_eval_cubic(std::mt19937 &rng)
 
     cout << "test_eval_cubic: pass" << endl;
 }
+
 
 
 // -------------------------------------------------------------------------------------------------
@@ -242,9 +252,9 @@ struct refsd_params {
     // 'ninv' has length 16, 'ninvx' has length 4, intensity+weights have length nx.
     void analyze_bin(float *ninv, float *ninvx, const float *intensity, const float *weights, int b);
 
-    void fit_model(float *coeffs, const float *intensity, const float *weights);
+    void fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg);
 
-    void detrend(float *intensity, const float *weights);
+    void detrend(float *intensity, const float *weights, float epsilon_reg);
 };
 
 
@@ -295,8 +305,18 @@ void refsd_params::analyze_bin(float ninv[16], float ninvx[4], const float *inte
 }
 
 
-void refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights)
+void refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg)
 {
+    float wsum = 0.0;
+    for (int i = 0; i < nx; i++)
+	wsum += weights[i];
+
+    if (wsum <= 0.0) {
+	memset(coeffs, 0, (2*nbins+2) * sizeof(*coeffs));
+	return;
+    }
+
+    float w = wsum * epsilon_reg / float(nbins);    
     vector<mat2> ninv_diag(nbins+1);
     vector<mat2> ninv_subdiag(nbins);
     vector<vec2> ninv_x(nbins+1);
@@ -306,6 +326,9 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 	float ninvx_bin[4];
 	analyze_bin(ninv_bin, ninvx_bin, intensity, weights, b);
 
+	for (int i = 0; i < 16; i++)
+	    ninv_bin[i] += w * reg_matrix[i];
+	
 	ninv_diag[b] += mat2(ninv_bin[0], ninv_bin[1], ninv_bin[4], ninv_bin[5]);
 	ninv_diag[b+1] += mat2(ninv_bin[10], ninv_bin[11], ninv_bin[14], ninv_bin[15]);
 	ninv_subdiag[b] += mat2(ninv_bin[8], ninv_bin[9], ninv_bin[12], ninv_bin[13]);
@@ -323,10 +346,10 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 }
 
 
-void refsd_params::detrend(float *intensity, const float *weights)
+void refsd_params::detrend(float *intensity, const float *weights, float epsilon_reg)
 {
     vector<float> coeffs(2*nbins+2);
-    fit_model(&coeffs[0], intensity, weights);
+    fit_model(&coeffs[0], intensity, weights, epsilon_reg);
     
     vector<float> intensity_fit(nx);
     eval_model(&intensity_fit[0], &coeffs[0]);
@@ -343,10 +366,8 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
 {
     refsd_params params(nx, nbins);
 
-    //
     // Test 1: compare refsd_params::eval_model() and refsd_params::eval_model_from_scratch().
     // This indirectly the poly_vals generation in _spline_detrender_init().
-    //
     
     vector<float> intensity(nx, 0.0);
     vector<float> in_coeffs = uniform_randvec(rng, 2*nbins+2, -1.0, 1.0);
@@ -361,15 +382,15 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
 	exit(1);
     }
 
+    // Test 2: test detrending in "well-conditioned" case where all weights are positive.
     //
-    // Test 2: check that refsd_params::fit_model() recovers the coefficients.
-    // For this test, we use weights which are all positive.
-    //
+    // In this case, the strongest test is to take epsilon_reg=0, and check that
+    // refsd_params::fit_model() recovers the model coefficients to high accuracy.
 
     vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
     
     vector<float> out_coeffs(2*nbins+2, 0.0);
-    params.fit_model(&out_coeffs[0], &intensity[0], &weights[0]);
+    params.fit_model(&out_coeffs[0], &intensity[0], &weights[0], 0);  // epsilon_reg=0
 
     float eps2 = maxdiff(in_coeffs, out_coeffs);
     if (eps2 > 1.0e-4) {
@@ -377,11 +398,11 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
 	exit(1);
     }
 
-#if 0
+    // Test 3: test detrending in poorly conditioned cases with sparse weights.
     //
-    // Test 3: check that refsd_params::detrend_model() zeroes the timestream.
-    // For this test, we can use weights with lots of zeros!
-    //
+    // In this case, it's hard to figure out the best unit test!  I decided to test
+    // that the weighted RMS intensity after detrending is < 0.01, after detrending
+    // with epsilon_reg=1.0e-4.
     
     memset(&weights[0], 0, nx * sizeof(float));
 
@@ -397,13 +418,18 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
 	}
     }
 
-    params.detrend(&intensity[0], &weights[0]);
+    params.detrend(&intensity[0], &weights[0], 1.0e-4);  // epsilon_reg = 10^(-4)
 
-    float eps3 = maxabs(intensity);
-    if (eps3 > 1.0e-4) {
+    float eps3 = weighted_rms_1d(intensity, weights);
+    if (eps3 > 1.0e-2) {
 	cout << "refsd::detrend() failed: nx=" << nx << ", nbins=" << nbins << ", epsilon=" << eps3 << endl;
 	exit(1);
     }
+
+#if 0
+    // This print statement is sometimes interesting to look at.
+    // Note that maxabs(intensity) can be of order one!
+    cout << "detrend: weighted_rms=" << weighted_rms_1d(intensity,weights) << ", maxabs=" << maxabs(intensity) << endl;
 #endif
 }
 
@@ -411,8 +437,9 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
 static void test_reference_spline_detrender(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
-	int nbins = randint(rng, 1, 100);
-	int nx = randint(rng, 32*nbins, 128*nbins);
+	// Number of bins
+	int nbins = randint(rng,0,2) ? randint(rng,1,100) : randint(rng,1,8);
+	int nx = randint(rng, 64*nbins, 128*nbins);
 	test_reference_spline_detrender(rng, nx, nbins);
     }
 

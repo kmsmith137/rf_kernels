@@ -60,6 +60,12 @@ inline std::vector<float> uniform_randvec(std::mt19937 &rng, ssize_t n, double l
 // Misc inlines
 
 
+inline float xsqrt(float x)
+{
+    assert(x >= 0.0);
+    return sqrt(x);
+}
+
 inline float maxdiff(const float *v, const float *w, ssize_t n)
 {
     assert(n > 0);
@@ -96,6 +102,32 @@ inline float maxabs(const float *v, ssize_t n)
 inline float maxabs(const std::vector<float> &v)
 {
     return maxabs(&v[0], v.size());
+}
+
+
+// Does not subtract mean.
+inline float weighted_rms_1d(const float *intensity, const float *weights, ssize_t n)
+{
+    assert(n > 0);
+
+    float wsum = 0.0;
+    float wi2sum = 0.0;
+
+    for (ssize_t i = 0; i < n; i++) {
+	wsum += weights[i];
+	wi2sum += weights[i] * intensity[i] * intensity[i];
+    }
+
+    return (wsum > 0) ? sqrt(wi2sum/wsum) : 0.0;
+}
+
+
+inline float weighted_rms_1d(const std::vector<float> &intensity, const std::vector<float> &weights)
+{
+    assert(intensity.size() == weights.size());
+    assert(intensity.size() > 0);
+    
+    return weighted_rms_1d(&intensity[0], &weights[0], intensity.size());
 }
 
 
