@@ -5,7 +5,12 @@
 
 
 # Note that INCFILES are in the rf_kernels/ subdirectory
-INCFILES = online_mask_filler.hpp xorshift_plus.hpp 
+INCFILES = internals.hpp \
+  online_mask_filler.hpp \
+  spline_detrender.hpp \
+  spline_detrender_internals.hpp \
+  unit_testing.hpp \
+  xorshift_plus.hpp 
 
 OFILES = online_mask_filler.o spline_detrender.o
 
