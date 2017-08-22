@@ -27,17 +27,20 @@ struct spline_detrender {
 
     void detrend(int nt_chunk, int stride, float *intensity, const float *weights);
 
-    int *bin_delim = nullptr;    // length (nbins+1)
-    float *poly_vals = nullptr;  // length (nfreq * 4)
-    float *ninv = nullptr;       // length (nbins * 10 * S), where S is the simd size
-    float *ninvx = nullptr;      // length (nbins * 4 * S), where S is the simd size
-    float *coeffs = nullptr;     // length (nbins * 4 * S), where S is the simd size
+    int *bin_delim = nullptr;           // length (nbins+1)
+    float *poly_vals = nullptr;         // length (nfreq * 4)
+    float *ninv = nullptr;              // length (nbins * 10 * S), where S is the simd size
+    float *ninvx = nullptr;             // length (nbins * 4 * S), where S is the simd size
+    float *cholesky_invdiag = nullptr;  // length (nbins+1) * 3 * S
+    float *cholesky_subdiag = nullptr;  // length (nbins * 4 * S)
+    float *coeffs = nullptr;            // length (nbins * 4 * S)
 
     uint8_t *allocated_memory = nullptr;
 
     // Defined in rf_pipelines/spline_detrender_internal.hpp
     inline void _kernel_ninv(int stride, const float *intensity, const float *weights);
     inline void _kernel_detrend(int stride, float *intensity);
+    inline void _kernel_fit_pass1();
 };
 
 

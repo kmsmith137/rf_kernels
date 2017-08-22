@@ -36,12 +36,16 @@ spline_detrender::spline_detrender(int nfreq_, int nbins_, float epsilon_) :
     int pv_size = nfreq * 4 * sizeof(float);
     int ninv_size = nbins * 10 * S * sizeof(float);
     int ninvx_size = nbins * 4 * S * sizeof(float);
+    int cdiag_size =(nbins+1) * 3 * S * sizeof(float);
+    int csdiag_size = nbins * 4 * S * sizeof(float);
     int coeffs_size = nbins * 4 * S * sizeof(float);
 
     int pv_offset = _align(bd_size, 64);
     int ninv_offset = pv_offset + _align(pv_size, 64);
     int ninvx_offset = ninv_offset + _align(ninv_size, 64);
-    int coeffs_offset = ninvx_offset + _align(ninvx_size, 64);
+    int cdiag_offset = ninvx_offset + _align(ninvx_size, 64);
+    int csdiag_offset = cdiag_offset + _align(cdiag_size, 64);
+    int coeffs_offset = csdiag_offset + _align(csdiag_size, 64);
     int end_offset = coeffs_offset + _align(coeffs_size, 64);
 
     this->allocated_memory = aligned_alloc<uint8_t> (end_offset);
@@ -49,6 +53,8 @@ spline_detrender::spline_detrender(int nfreq_, int nbins_, float epsilon_) :
     this->poly_vals = reinterpret_cast<float *> (allocated_memory + pv_offset);
     this->ninv = reinterpret_cast<float *> (allocated_memory + ninv_offset);
     this->ninvx = reinterpret_cast<float *> (allocated_memory + ninvx_offset);
+    this->cholesky_invdiag = reinterpret_cast<float *> (allocated_memory + cdiag_offset);
+    this->cholesky_subdiag = reinterpret_cast<float *> (allocated_memory + csdiag_offset);
     this->coeffs = reinterpret_cast<float *> (allocated_memory + coeffs_offset);
 
     _spline_detrender_init(bin_delim, poly_vals, nfreq, nbins);
@@ -59,12 +65,14 @@ spline_detrender::~spline_detrender()
 {
     free(allocated_memory);
 
-    bin_delim = nullptr;
-    poly_vals = nullptr;
-    ninv = nullptr;
-    ninvx = nullptr;
-    coeffs = nullptr;
-    allocated_memory = nullptr;
+    this->bin_delim = nullptr;
+    this->poly_vals = nullptr;
+    this->ninv = nullptr;
+    this->ninvx = nullptr;
+    this->cholesky_invdiag = nullptr;
+    this->cholesky_subdiag = nullptr;
+    this->coeffs = nullptr;
+    this->allocated_memory = nullptr;
 }
 
 

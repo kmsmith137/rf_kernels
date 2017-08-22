@@ -25,6 +25,7 @@ struct spline_detrender_timing_thread : public kernel_timing_thread {
 	for (int i = 0; i < niter; i++) {
 	    for (int it = 0; it < nt_chunk; it += 8) {
 		sd._kernel_ninv(stride, intensity+it, weights+it);
+		sd._kernel_fit_pass1();
 		sd._kernel_detrend(stride, intensity+it);
 	    }
 	}
