@@ -125,6 +125,42 @@ inline void spline_detrender::_kernel_ninv(int stride, const float *intensity, c
 }
 
 
+inline void spline_detrender::_kernel_detrend(int stride, float *intensity)
+{
+    for (int b = 0; b < nbins; b++) {
+	int ifreq0 = bin_delim[b];
+	int ifreq1 = bin_delim[b+1];
+
+	__m256 c0 = _mm256_loadu_ps(coeffs + 32*b);
+	__m256 c1 = _mm256_loadu_ps(coeffs + 32*b + 8);
+	__m256 c2 = _mm256_loadu_ps(coeffs + 32*b + 16);
+	__m256 c3 = _mm256_loadu_ps(coeffs + 32*b + 24);
+	__m256 pp = _mm256_load_ps(poly_vals + 4 * (ifreq0 & ~1));
+	__m256 p;
+	
+	for (int ifreq = ifreq0; ifreq < ifreq1; ifreq++) {
+	    __m256 ival = _mm256_loadu_ps(intensity + ifreq*stride);
+
+	    if (ifreq & 1)
+		p = _mm256_permute2f128_ps(pp, pp, 0x11);
+	    else {
+		pp = _mm256_load_ps(poly_vals + 4*ifreq);
+		p = _mm256_permute2f128_ps(pp, pp, 0x00);
+	    }
+	    
+	    __m256 p0 = _mm256_permute_ps(p, 0x00);
+	    __m256 p1 = _mm256_permute_ps(p, 0x55);
+	    __m256 p2 = _mm256_permute_ps(p, 0xaa);
+	    __m256 p3 = _mm256_permute_ps(p, 0xff);
+
+	    ival -= (c0*p0 + c1*p1 + c2*p2 + c3*p3);
+
+	    _mm256_storeu_ps(intensity + ifreq*stride, ival);
+	}
+    }	
+}
+
+
 }  // namespace rf_kernels
 
 #endif  // _RF_KERNELS_SPLINE_DETRENDER_INTERNAL_HPP

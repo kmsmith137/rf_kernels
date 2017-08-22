@@ -31,11 +31,13 @@ struct spline_detrender {
     float *poly_vals = nullptr;  // length (nfreq * 4)
     float *ninv = nullptr;       // length (nbins * 10 * S), where S is the simd size
     float *ninvx = nullptr;      // length (nbins * 4 * S), where S is the simd size
+    float *coeffs = nullptr;     // length (nbins * 4 * S), where S is the simd size
 
     uint8_t *allocated_memory = nullptr;
 
     // Defined in rf_pipelines/spline_detrender_internal.hpp
     inline void _kernel_ninv(int stride, const float *intensity, const float *weights);
+    inline void _kernel_detrend(int stride, float *intensity);
 };
 
 

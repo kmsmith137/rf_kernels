@@ -36,17 +36,20 @@ spline_detrender::spline_detrender(int nfreq_, int nbins_, float epsilon_) :
     int pv_size = nfreq * 4 * sizeof(float);
     int ninv_size = nbins * 10 * S * sizeof(float);
     int ninvx_size = nbins * 4 * S * sizeof(float);
+    int coeffs_size = nbins * 4 * S * sizeof(float);
 
     int pv_offset = _align(bd_size, 64);
     int ninv_offset = pv_offset + _align(pv_size, 64);
     int ninvx_offset = ninv_offset + _align(ninv_size, 64);
-    int end_offset = ninvx_offset + _align(ninvx_size, 64);
+    int coeffs_offset = ninvx_offset + _align(ninvx_size, 64);
+    int end_offset = coeffs_offset + _align(coeffs_size, 64);
 
     this->allocated_memory = aligned_alloc<uint8_t> (end_offset);
     this->bin_delim = reinterpret_cast<int *> (allocated_memory);
     this->poly_vals = reinterpret_cast<float *> (allocated_memory + pv_offset);
     this->ninv = reinterpret_cast<float *> (allocated_memory + ninv_offset);
     this->ninvx = reinterpret_cast<float *> (allocated_memory + ninvx_offset);
+    this->coeffs = reinterpret_cast<float *> (allocated_memory + coeffs_offset);
 
     _spline_detrender_init(bin_delim, poly_vals, nfreq, nbins);
 }
@@ -60,6 +63,7 @@ spline_detrender::~spline_detrender()
     poly_vals = nullptr;
     ninv = nullptr;
     ninvx = nullptr;
+    coeffs = nullptr;
     allocated_memory = nullptr;
 }
 

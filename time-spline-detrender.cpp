@@ -22,9 +22,12 @@ struct spline_detrender_timing_thread : public kernel_timing_thread {
 	this->allocate();
 	this->start_timer();
 
-	for (int i = 0; i < niter; i++)
-	    for (int it = 0; it < nt_chunk; it += 8)
+	for (int i = 0; i < niter; i++) {
+	    for (int it = 0; it < nt_chunk; it += 8) {
 		sd._kernel_ninv(stride, intensity+it, weights+it);
+		sd._kernel_detrend(stride, intensity+it);
+	    }
+	}
 
 	this->stop_timer2("spline_detrender");
     }
