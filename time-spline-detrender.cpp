@@ -11,38 +11,57 @@ using namespace simd_helpers;
 static void _two_pass(int nfreq, int nt_chunk, int stride, float *intensity, float *weights, float *poly_vals, float *out)
 {
     for (int it = 0; it < nt_chunk; it += 8) {
-	simd_t<float,8> wi0(0.0);
-	simd_t<float,8> wi1(0.0);
-	simd_t<float,8> wi2(0.0);
-	simd_t<float,8> wi3(0.0);
-	simd_t<float,8> w00(0.0);
-	simd_t<float,8> w01(0.0);
-	simd_t<float,8> w02(0.0);
-	simd_t<float,8> w03(0.0);
+	__m256 wi0 = _mm256_setzero_ps();
+	__m256 wi1 = _mm256_setzero_ps();
+	__m256 wi2 = _mm256_setzero_ps();
+	__m256 wi3 = _mm256_setzero_ps();
+	__m256 w00 = _mm256_setzero_ps();
+	__m256 w01 = _mm256_setzero_ps();
+	__m256 w02 = _mm256_setzero_ps();
+	__m256 w03 = _mm256_setzero_ps();
+	__m256 pp, p;
 
-	// First pass
+	// First pass.
+
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    simd_t<float,8> w = simd_load<float,8> (weights + ifreq*stride + it);
-	    simd_t<float,8> wi = simd_load<float,8> (intensity + ifreq*stride + it);
+	    __m256 w = _mm256_loadu_ps(weights + ifreq*stride + it);
+	    __m256 wi = _mm256_loadu_ps(intensity + ifreq*stride + it);
 	    wi *= w;
 
-	    simd_t<float,8> p = simd_load<float,8> (poly_vals + 8*ifreq);
-	    simd_t<float,8> p0 = _mm256_permute_ps(p.x, 0x00);
-	    simd_t<float,8> p1 = _mm256_permute_ps(p.x, 0x55);
-	    simd_t<float,8> p2 = _mm256_permute_ps(p.x, 0xaa);
-	    simd_t<float,8> p3 = _mm256_permute_ps(p.x, 0xff);
+	    if (ifreq & 1)
+		p = _mm256_permute2f128_ps(pp, pp, 0x11);
+	    else {
+		pp = _mm256_load_ps(poly_vals + 4*ifreq);
+		p = _mm256_permute2f128_ps(pp, pp, 0x00);
+	    }
+
+	    __m256 p0 = _mm256_permute_ps(p, 0x00);
+	    __m256 p1 = _mm256_permute_ps(p, 0x55);
+	    __m256 p2 = _mm256_permute_ps(p, 0xaa);
+	    __m256 p3 = _mm256_permute_ps(p, 0xff);
 
 	    wi0 += wi * p0;
 	    wi1 += wi * p1;
 	    wi2 += wi * p2;
 	    wi3 += wi * p3;
 
-	    w00 += w * p0 * p0;
-	    w01 += w * p0 * p1;
-	    w02 += w * p0 * p2;
-	    w03 += w * p0 * p3;
+	    w *= p0;
+	    w00 += w * p0;
+	    w01 += w * p1;
+	    w02 += w * p2;
+	    w03 += w * p3;
 	}
 
+	_mm256_storeu_ps(out + 14*it, wi0);
+	_mm256_storeu_ps(out + 14*it + 8, wi1);
+	_mm256_storeu_ps(out + 14*it + 16, wi2);
+	_mm256_storeu_ps(out + 14*it + 24, wi3);
+	_mm256_storeu_ps(out + 14*it + 32, w00);
+	_mm256_storeu_ps(out + 14*it + 40, w01);
+	_mm256_storeu_ps(out + 14*it + 48, w02);
+	_mm256_storeu_ps(out + 14*it + 56, w03);
+
+#if 0
 	simd_store(out + 14*it, wi0);
 	simd_store(out + 14*it + 8, wi1);
 	simd_store(out + 14*it + 16, wi2);
@@ -51,7 +70,9 @@ static void _two_pass(int nfreq, int nt_chunk, int stride, float *intensity, flo
 	simd_store(out + 14*it + 40, w01);
 	simd_store(out + 14*it + 48, w02);
 	simd_store(out + 14*it + 56, w03);
+#endif
 
+#if 0
 	simd_t<float,8> w11(0.0);
 	simd_t<float,8> w12(0.0);
 	simd_t<float,8> w13(0.0);
@@ -82,6 +103,7 @@ static void _two_pass(int nfreq, int nt_chunk, int stride, float *intensity, flo
 	simd_store(out + 14*it + 88, w22);
 	simd_store(out + 14*it + 96, w23);
 	simd_store(out + 14*it + 104, w33);
+#endif
     }
 }
 
