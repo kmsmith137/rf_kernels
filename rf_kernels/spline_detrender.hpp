@@ -22,7 +22,7 @@ struct spline_detrender {
     const int nbins;
     const float epsilon;
 
-    spline_detrender(int nfreq, int nbins, float epsilon=1.0e-4);
+    spline_detrender(int nfreq, int nbins, float epsilon=3.0e-4);
     ~spline_detrender();
 
     void detrend(int nt_chunk, int stride, float *intensity, const float *weights);
