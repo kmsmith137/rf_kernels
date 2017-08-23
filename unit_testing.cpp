@@ -463,7 +463,9 @@ kernel_timing_thread::kernel_timing_thread(const shared_ptr<timing_thread_pool> 
     nt_chunk(params.nt_chunk),
     stride(params.stride)
 { 
-    // Note: we don't allocate 'intensity' and 'weights' in the 
+    // Note: we don't allocate 'intensity' and 'weights' in the kernel_timing_thread constructor,
+    // since this would allocate from the "master" thread context.  Instead, these arrays are
+    // allocated in kernel-timing_thread::allocate(), which is called from the timing thread context.
 }
 
 
