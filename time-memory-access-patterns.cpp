@@ -41,7 +41,7 @@ inline void read_ntuple(simd_ntuple<float,S,N> &dst, const float *src, int strid
 
 
 template<unsigned int N>
-inline void read_nrows(int nfreq, int nt_chunk, int stride, const float *src)
+inline void read_rows(int nfreq, int nt_chunk, int stride, const float *src)
 {
     simd_t<float,S> acc(0.0);
 	
@@ -58,7 +58,7 @@ inline void read_nrows(int nfreq, int nt_chunk, int stride, const float *src)
 
 
 template<unsigned int N>
-inline void read_nrows_2arr(int nfreq, int nt_chunk, int stride, const float *src1, const float *src2)
+inline void read_rows_2arr(int nfreq, int nt_chunk, int stride, const float *src1, const float *src2)
 {
     simd_t<float,S> acc(0.0);
 	
@@ -80,7 +80,7 @@ inline void read_nrows_2arr(int nfreq, int nt_chunk, int stride, const float *sr
 
 
 template<unsigned int N>
-inline void read_ncols(int nfreq, int nt_chunk, int stride, const float *src)
+inline void read_cols(int nfreq, int nt_chunk, int stride, const float *src)
 {
     simd_t<float,S> acc(0.0);
 	
@@ -96,24 +96,6 @@ inline void read_ncols(int nfreq, int nt_chunk, int stride, const float *src)
 }
 
 
-#if 0
-template<unsigned int N, bool Aligned, bool Streaming>
-inline void transpose_nrows(int nfreq, int nt_chunk, int stride, float *dst, const float *src)
-{
-    for (int ifreq = 0; ifreq < nfreq; ifreq += N) {
-	float *dst_row = dst + N*S;
-	
-	for (int it = 0; it < nt_chunk; it += S) {
-	    simd_ntuple<float,S,N> x;
-	    read_ntuple(x, row + it, stride);
-	    write_ntuple(x, row + , 1);
-	    dst_row += 
-	}
-    }
-}
-#endif
-
-
 struct memory_access_timing_thread : public kernel_timing_thread {
     memory_access_timing_thread(const shared_ptr<timing_thread_pool> &pool_, const kernel_timing_params &params_) :
 	kernel_timing_thread(pool_, params_)
@@ -126,66 +108,66 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 
 	this->allocate();
 
-	// read_nrows<N>
+	// read_rows<N>
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_nrows<1> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_nrows<1>");
+	    read_rows<1> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_rows<1>");
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_nrows<2> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_nrows<2>");
+	    read_rows<2> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_rows<2>");
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_nrows<4> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_nrows<4>");
+	    read_rows<4> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_rows<4>");
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_nrows<8> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_nrows<8>");
+	    read_rows<8> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_rows<8>");
 
-	// read_nrows_2arr<N>
+	// read_rows_2arr<N>
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_nrows_2arr<1> (nfreq, nt_chunk, stride, intensity, weights);
-	this->stop_timer2("read_nrows_2arr<1>");
-
-	this->start_timer();
-	for (int iter = 0; iter < niter; iter++)
-	    read_nrows_2arr<2> (nfreq, nt_chunk, stride, intensity, weights);
-	this->stop_timer2("read_nrows_2arr<2>");
+	    read_rows_2arr<1> (nfreq, nt_chunk, stride, intensity, weights);
+	this->stop_timer2("read_rows_2arr<1>");
 
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_nrows_2arr<4> (nfreq, nt_chunk, stride, intensity, weights);
-	this->stop_timer2("read_nrows_2arr<4>");
+	    read_rows_2arr<2> (nfreq, nt_chunk, stride, intensity, weights);
+	this->stop_timer2("read_rows_2arr<2>");
 
-	// read_ncols<N>
+	this->start_timer();
+	for (int iter = 0; iter < niter; iter++)
+	    read_rows_2arr<4> (nfreq, nt_chunk, stride, intensity, weights);
+	this->stop_timer2("read_rows_2arr<4>");
+
+	// read_cols<N>
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_ncols<1> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_ncols<1>");
+	    read_cols<1> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_cols<1>");
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_ncols<2> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_ncols<2>");
+	    read_cols<2> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_cols<2>");
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_ncols<4> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_ncols<4>");
+	    read_cols<4> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_cols<4>");
 	
 	this->start_timer();
 	for (int iter = 0; iter < niter; iter++)
-	    read_ncols<8> (nfreq, nt_chunk, stride, intensity);
-	this->stop_timer2("read_ncols<8>");
+	    read_cols<8> (nfreq, nt_chunk, stride, intensity);
+	this->stop_timer2("read_cols<8>");
     }
 };
 
