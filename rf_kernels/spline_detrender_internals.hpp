@@ -317,8 +317,8 @@ inline void spline_detrender::_kernel_detrend(int stride, float *intensity)
 
 	c0 = c2;
 	c1 = c3;
-	c2 = _mm256_loadu_ps(coeffs + 32*b + 16);
-	c3 = _mm256_loadu_ps(coeffs + 32*b + 24);
+	c2 = _mm256_loadu_ps(coeffs + 16*b + 16);
+	c3 = _mm256_loadu_ps(coeffs + 16*b + 24);
 
 	__m256 pp = _mm256_load_ps(poly_vals + 4 * (ifreq0 & ~1));
 	__m256 p;
