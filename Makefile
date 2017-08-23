@@ -79,7 +79,7 @@ unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testin
 test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-test-spline-detrender.o: test-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp
+test-spline-detrender.o: test-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
 time-memory-access-patterns.o: time-memory-access-patterns.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp

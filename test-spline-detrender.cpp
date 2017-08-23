@@ -1,6 +1,7 @@
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 #include "rf_kernels/spline_detrender.hpp"
+#include "rf_kernels/spline_detrender_internals.hpp"
 
 using namespace std;
 using namespace rf_kernels;
@@ -44,7 +45,7 @@ inline float eval_cubic(float lval, float lderiv, float rval, float rderiv, floa
 
 void test_eval_cubic(std::mt19937 &rng)
 {
-    for (int iter = 0; iter < 10; iter++) {
+    for (int iter = 0; iter < 1000; iter++) {
 	float x = uniform_rand(rng, 0.0, 1.0);
 
 	float eps1 = 1.0 - eval_cubic(1,0,1,0,x);
@@ -255,6 +256,9 @@ struct refsd_params {
     void fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg);
 
     void detrend(float *intensity, const float *weights, float epsilon_reg);
+
+    // Helper function for testing.
+    void make_sparse_weights(std::mt19937 &rng, float *weights);
 };
 
 
@@ -359,6 +363,24 @@ void refsd_params::detrend(float *intensity, const float *weights, float epsilon
 }
 
 
+void refsd_params::make_sparse_weights(std::mt19937 &rng, float *weights)
+{
+    memset(&weights[0], 0, nx * sizeof(float));
+
+    for (int b = 0; b < nbins; b++) {
+	int n = bin_delim[b+1] - bin_delim[b];
+
+	// Number of nonzero weights, chosen to sample "interesting" matrix ranks.
+	int nz = randint(rng,0,2) ? randint(rng,0,4) : randint(rng,0,n+1);
+	
+	for (int iz = 0; iz < nz; iz++) {
+	    int i = randint(rng, bin_delim[b], bin_delim[b+1]);
+	    weights[i] = uniform_rand(rng);
+	}
+    }
+}
+
+
 // -------------------------------------------------------------------------------------------------
 
 
@@ -403,21 +425,8 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
     // In this case, it's hard to figure out the best unit test!  I decided to test
     // that the weighted RMS intensity after detrending is < 0.01, after detrending
     // with epsilon_reg=1.0e-4.
-    
-    memset(&weights[0], 0, nx * sizeof(float));
 
-    for (int b = 0; b < nbins; b++) {
-	int n = params.bin_delim[b+1] - params.bin_delim[b];
-
-	// Number of nonzero weights, chosen to sample "interesting" matrix ranks.
-	int nz = randint(rng,0,2) ? randint(rng,0,4) : randint(rng,0,n+1);
-	
-	for (int iz = 0; iz < nz; iz++) {
-	    int i = randint(rng, params.bin_delim[b], params.bin_delim[b+1]);
-	    weights[i] = uniform_rand(rng);
-	}
-    }
-
+    params.make_sparse_weights(rng, &weights[0]);
     params.detrend(&intensity[0], &weights[0], 1.0e-4);  // epsilon_reg = 10^(-4)
 
     float eps3 = weighted_rms_1d(intensity, weights);
@@ -437,13 +446,100 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
 static void test_reference_spline_detrender(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
-	// Number of bins
+	// Number of bins is chosen in a way which tests both low-nbins and high-nbins cases.
 	int nbins = randint(rng,0,2) ? randint(rng,1,100) : randint(rng,1,8);
 	int nx = randint(rng, 64*nbins, 128*nbins);
+
 	test_reference_spline_detrender(rng, nx, nbins);
     }
 
     cout << "test_reference_spline_detrender: pass" << endl;
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+// Helper for test_fast_kernels
+inline void _compare(const char *str, float x_ref, float x_fast, float epsilon)
+{
+    float delta = abs(x_ref - x_fast);
+
+    if (delta > epsilon) {
+	cout << "test_fast_kernels failed (" << str << ") ref=" << x_ref << ", fast=" << x_fast << ", delta=" << delta << endl;
+	exit(1);
+    }
+}
+
+
+static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int stride, float epsilon_reg)
+{
+    spline_detrender fast_sd(nfreq, nbins, epsilon_reg);
+    refsd_params ref_sd(nfreq, nbins);
+
+    vector<float> ref_intensity = uniform_randvec(rng, 8*nfreq, -1.0, 1.0);
+    vector<float> ref_weights = uniform_randvec(rng, 8*nfreq, 0.1, 1.0);
+
+#if 0
+    for (int s = 0; s < 8; s++)
+	ref_sd.make_sparse_weights(rng, &ref_weights[s*nfreq]);
+#endif
+
+    float *fast_intensity = aligned_alloc<float> (nfreq * stride);
+    float *fast_weights = aligned_alloc<float> (nfreq * stride);
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int s = 0; s < 8; s++) {
+	    fast_intensity[ifreq*stride + s] = ref_intensity[s*nfreq + ifreq];
+	    fast_weights[ifreq*stride + s] = ref_weights[s*nfreq + ifreq];
+	}
+    }
+
+    fast_sd._kernel_ninv(stride, fast_intensity, fast_weights);
+
+    for (int s = 0; s < 8; s++) {
+	for (int b = 0; b < nbins; b++) {
+	    float ref_ninv[16];
+	    float ref_ninvx[4];
+	    
+	    ref_sd.analyze_bin(ref_ninv, ref_ninvx, &ref_intensity[s*nfreq], &ref_weights[s*nfreq], b);
+
+	    _compare("wi0", ref_ninvx[0], fast_sd.ninvx[b*32+s], 1.0e-5);
+	    _compare("wi1", ref_ninvx[1], fast_sd.ninvx[b*32+8+s], 1.0e-5);
+	    _compare("wi2", ref_ninvx[2], fast_sd.ninvx[b*32+16+s], 1.0e-5);
+	    _compare("wi3", ref_ninvx[3], fast_sd.ninvx[b*32+24+s], 1.0e-5);
+
+	    _compare("w00", ref_ninv[0], fast_sd.ninv[b*80+s], 1.0e-5);
+	    _compare("w01", ref_ninv[1], fast_sd.ninv[b*80+8+s], 1.0e-5);
+	    _compare("w02", ref_ninv[2], fast_sd.ninv[b*80+16+s], 1.0e-5);
+	    _compare("w03", ref_ninv[3], fast_sd.ninv[b*80+24+s], 1.0e-5);
+	    _compare("w11", ref_ninv[5], fast_sd.ninv[b*80+32+s], 1.0e-5);
+	    _compare("w12", ref_ninv[6], fast_sd.ninv[b*80+40+s], 1.0e-5);
+	    _compare("w13", ref_ninv[7], fast_sd.ninv[b*80+48+s], 1.0e-5);
+	    _compare("w22", ref_ninv[10], fast_sd.ninv[b*80+56+s], 1.0e-5);
+	    _compare("w23", ref_ninv[11], fast_sd.ninv[b*80+64+s], 1.0e-5);
+	    _compare("w33", ref_ninv[15], fast_sd.ninv[b*80+72+s], 1.0e-5);
+	}
+    }
+
+    free(fast_intensity);
+    free(fast_weights);
+}
+
+
+static void test_fast_kernels(std::mt19937 &rng)
+{
+    for (int iter = 0; iter < 1000; iter++) {
+	// Number of bins is chosen in a way which tests both low-nbins and high-nbins cases.
+	int nbins = randint(rng,0,2) ? randint(rng,1,100) : randint(rng,1,8);
+	int nfreq = randint(rng, 64*nbins, 128*nbins);
+	int stride = 8 * randint(rng, 1, 5);
+	float epsilon_reg = exp(uniform_rand(rng, log(1.0e-4), 0.0));
+
+	test_fast_kernels(rng, nfreq, nbins, stride, epsilon_reg);
+    }
+
+    cout << "test_fast_kernels: pass" << endl;
 }
 
 
@@ -457,6 +553,8 @@ int main(int argc, char **argv)
 
     test_eval_cubic(rng);
     test_reference_spline_detrender(rng);
+    // test_fast_kernels(rng, 16, 1, 8, 0.0);
+    test_fast_kernels(rng);
 
     return 0;
 }
