@@ -550,9 +550,11 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
     vector<float> ref_coeffs(8 * (2*nbins+2), 0.0);
 
     fast_sd._kernel_fit_pass1();
+    fast_sd._kernel_fit_pass2();
+    fast_sd._kernel_fit_pass3();
     
     for (int s = 0; s < 8; s++) {
-	big_cholesky ref_bc = ref_sd.fit_model(&ref_coeffs[s * (2*nbins+2)], &ref_intensity[s*nfreq], &ref_weights[s*nfreq], epsilon_reg);
+	big_cholesky ref_bc = ref_sd.fit_model(&ref_coeffs[s*(2*nbins+2)], &ref_intensity[s*nfreq], &ref_weights[s*nfreq], epsilon_reg);
 
 	for (int b = 0; b <= nbins; b++) {
 	    _compare("linv00", ref_bc.cholesky_diag[b].linv.a00, fast_sd.cholesky_invdiag[24*b+s], 1.0e-4);
@@ -566,6 +568,9 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	    _compare("ls10", ref_bc.cholesky_subdiag[b].a10, fast_sd.cholesky_subdiag[32*b+16+s], 1.0e-4);
 	    _compare("ls11", ref_bc.cholesky_subdiag[b].a11, fast_sd.cholesky_subdiag[32*b+24+s], 1.0e-4);
 	}
+
+	for (int i = 0; i < 2*nbins+2; i++)
+	    _compare("coeff", ref_coeffs[s*(2*nbins+2)+i], fast_sd.coeffs[8*i+s], 1.0e-4);
     }
 
     free(fast_intensity);
@@ -599,7 +604,7 @@ int main(int argc, char **argv)
 
     test_eval_cubic(rng);
     test_reference_spline_detrender(rng);
-    // test_fast_kernels(rng, 16, 1, 8, 1.0);
+    // test_fast_kernels(rng, 32, 1, 8, 1.0);
     test_fast_kernels(rng);
 
     return 0;
