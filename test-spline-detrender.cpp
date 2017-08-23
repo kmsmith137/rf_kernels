@@ -481,19 +481,14 @@ inline void _compare(const char *str, float x_ref, float x_fast, float epsilon)
     float delta = abs(x_ref - x_fast);
 
     if (delta > epsilon) {
-	cout << "test_fast_kernels failed (" << str << ") ref=" << x_ref << ", fast=" << x_fast << ", delta=" << delta << endl;
+	cout << "test_fast_kernels failed (" << str << ") ref=" << x_ref << ", fast=" << x_fast << ", delta=" << delta << ", epsilon=" << epsilon << endl;
 	exit(1);
     }
-}
 
-
-inline void _show(const char *str, float x_ref, float x_fast, float epsilon)
-{
-    float delta = abs(x_ref - x_fast);
-    cout << str << ": ref=" << x_ref << ", fast=" << x_fast << ", delta=" << delta;
-    if (delta > epsilon)
-	cout << "        ********";
-    cout << endl;
+#if 0
+    if (delta > epsilon/3.)
+	cout << "test_fast_kernels close call (" << str << ") ref=" << x_ref << ", fast=" << x_fast << ", delta=" << delta << ", epsilon=" << epsilon << endl;
+#endif
 }
 
 
@@ -505,7 +500,7 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
     vector<float> ref_intensity = uniform_randvec(rng, 8*nfreq, -1.0, 1.0);
     vector<float> ref_weights = uniform_randvec(rng, 8*nfreq, 0.1, 1.0);
 
-#if 0
+#if 1
     for (int s = 0; s < 8; s++)
 	ref_sd.make_sparse_weights(rng, &ref_weights[s*nfreq]);
 #endif
@@ -556,9 +551,11 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	big_cholesky ref_bc = ref_sd.fit_model(&ref_coeffs[0], &ref_intensity[s*nfreq], &ref_weights[s*nfreq], epsilon_reg);
 
 	for (int b = 0; b <= nbins; b++) {
-	    _compare("linv00", ref_bc.cholesky_diag[b].linv.a00, fast_sd.cholesky_invdiag[24*b+s], 1.0e-4);
-	    _compare("linv10", ref_bc.cholesky_diag[b].linv.a10, fast_sd.cholesky_invdiag[24*b+8+s], 1.0e-4);
-	    _compare("linv11", ref_bc.cholesky_diag[b].linv.a11, fast_sd.cholesky_invdiag[24*b+16+s], 1.0e-4);
+	    float eps00 = 1.0e-3 * ref_bc.cholesky_diag[b].linv.a00;
+	    float eps11 = 1.0e-3 * ref_bc.cholesky_diag[b].linv.a11;
+	    _compare("linv00", ref_bc.cholesky_diag[b].linv.a00, fast_sd.cholesky_invdiag[24*b+s], eps00);
+	    _compare("linv10", ref_bc.cholesky_diag[b].linv.a10, fast_sd.cholesky_invdiag[24*b+8+s], sqrt(eps00*eps11));
+	    _compare("linv11", ref_bc.cholesky_diag[b].linv.a11, fast_sd.cholesky_invdiag[24*b+16+s], eps11);
 	}
 
 	for (int b = 0; b < nbins; b++) {
@@ -569,7 +566,7 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	}
 
 	for (int i = 0; i < 2*nbins+2; i++)
-	    _compare("coeff", ref_coeffs[i], fast_sd.coeffs[8*i+s], 1.0e-4);
+	    _compare("coeff", ref_coeffs[i], fast_sd.coeffs[8*i+s], 3.0e-3);
     }
 
     fast_sd._kernel_detrend(stride, fast_intensity);
@@ -594,8 +591,8 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	
     float wrmsdiff = (wrmsdiff_den > 0.0) ? sqrt(wrmsdiff_num / wrmsdiff_den) : 0.0;
 
-    if ((maxdiff > 1.0e-5) || (wrmsdiff > 1.0e-5)) {
-	cout << "test_fast_kernels failed (detrend comparison): maxdiff=" << maxdiff << ", wrmsdiff=" << wrmsdiff << " (epsilon=1.0e-5)" << endl;
+    if ((maxdiff > 1.0e-3) || (wrmsdiff > 1.0e-5)) {
+	cout << "test_fast_kernels failed (detrend comparison): maxdiff=" << maxdiff << ", wrmsdiff=" << wrmsdiff << endl;
 	exit(1);
     }
 	
@@ -607,11 +604,15 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 static void test_fast_kernels(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
+	// Sometimes I run with more than 1000 iterations.
+	if (iter % 2000 == 1999)
+	    cout << "iteration " << (iter+1) << endl;
+
 	// Number of bins is chosen in a way which tests both low-nbins and high-nbins cases.
 	int nbins = randint(rng,0,2) ? randint(rng,1,100) : randint(rng,1,8);
 	int nfreq = randint(rng, 64*nbins, 128*nbins);
 	int stride = 8 * randint(rng, 1, 5);
-	float epsilon_reg = exp(uniform_rand(rng, log(1.0e-4), 0.0));
+	float epsilon_reg = exp(uniform_rand(rng, log(1.0e-3), 0.0));
 
 	test_fast_kernels(rng, nfreq, nbins, stride, epsilon_reg);
     }
