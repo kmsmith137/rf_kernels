@@ -105,36 +105,20 @@ inline __m256 update_var(__m256 tmp_var, __m256 prev_var, float var_weight, floa
 
 
 template<bool overwrite_on_wt0, bool modify_weights>
-void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-		       float *intensity, float *weights, float *running_var, float *running_weights,
-		       uint64_t rng_state[8])
+void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, float *intensity, float *weights)
 {
     const float w_clamp = params.w_clamp;
     const float var_weight = params.var_weight;
     const float var_clamp_add = params.var_clamp_add;
     const float var_clamp_mult = params.var_clamp_mult;
     const float w_cutoff = params.w_cutoff;
-    const int v1_chunk = params.v1_chunk;
+    const int nfreq = params.nfreq;
 
-    if (v1_chunk != 32)
-	throw runtime_error("rf_kernels::online_mask_filler: only v1_chunk=32 is currently implemented");
-
-    rf_assert(nfreq > 0);
-    rf_assert(nt_chunk > 0);
-    rf_assert(nt_chunk % v1_chunk == 0);
-    rf_assert(var_weight > 0);
-    rf_assert(var_clamp_add >= 0);
-    rf_assert(var_clamp_mult >= 0);
-    rf_assert(w_clamp > 0);
-    rf_assert(w_cutoff > 0);
-    
-    rf_assert(intensity != nullptr);
-    rf_assert(weights != nullptr);
-    rf_assert(running_var != nullptr);
-    rf_assert(running_weights != nullptr);
+    float *running_var = params.running_var.get();
+    float *running_weights = params.running_weights.get();
     
     // Construct our random number generator object on the stack by initializing from the state kept in bonsai/online_mask_filler.c! 
-    vec_xorshift_plus rng(rng_state);
+    vec_xorshift_plus rng(params.rng_state);
 
     __m256 tmp_var, prev_var, prev_w, w0, w1, w2, w3, i0, i1, i2, i3, res0, res1, res2, res3, rw_check;
     __m256 c = _mm256_set1_ps(w_cutoff);
@@ -270,7 +254,61 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
     }
 
     // Now that we're done, write out the new state of the random number generator back to the stack!
-    rng.store_state(rng_state);
+    rng.store_state(params.rng_state);
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+online_mask_filler::online_mask_filler(int nfreq_) :
+    nfreq(nfreq_)
+{
+    if (nfreq <= 0)
+	throw runtime_error("rf_kernels::online_mask_filler: expected nfreq > 0");
+
+    this->running_var = unique_ptr<float[]> (new float[nfreq]);
+    this->running_weights = unique_ptr<float[]> (new float[nfreq]);
+
+    memset(running_var.get(), 0, nfreq * sizeof(float));
+    memset(running_weights.get(), 0, nfreq * sizeof(float));
+
+    std::random_device rd;
+    
+    for (int i = 0; i < 8; i++)
+	this->rng_state[i] = uint64_t(rd()) + (uint64_t(rd()) << 32);
+}
+
+
+// Helper for online_mask_filler::mask_fill()
+inline void _check_args(const online_mask_filler &params, int nt_chunk, int stride, float *intensity, float *weights)
+{
+    if (nt_chunk <= 0)
+	throw runtime_error("rf_kernels::online_mask_filler: expected nt_chunk > 0");
+    if (params.nfreq <= 0)
+	throw runtime_error("rf_kernels::online_mask_filler: expected nfreq > 0");
+    if (params.v1_chunk != 32)
+	throw runtime_error("rf_kernels::online_mask_filler: only v1_chunk=32 is currently implemented");
+    if (nt_chunk % params.v1_chunk != 0)
+	throw runtime_error("rf_kernels::online_mask_filler: expected nt_chunk to be a multiple of v1_chunk");
+    if (abs(stride) < nt_chunk)
+	throw runtime_error("rf_kernels::online_mask_filler: expected abs(stride) >= nt_chunk");
+    if (params.var_weight <= 0.0)
+	throw runtime_error("rf_kernels::online_mask_filler: var_weight is uninitialized (or <= 0)");
+    if (params.var_clamp_add < 0.0)
+	throw runtime_error("rf_kernels::online_mask_filler: expected var_clamp_add >= 0");
+    if (params.var_weight < 0.0)
+	throw runtime_error("rf_kernels::online_mask_filler: expected var_weight >= 0");
+    if ((params.var_clamp_add <= 0.0) && (params.var_clamp_mult <= 0.0))
+	throw runtime_error("rf_kernels::online_mask_filler: var_clamp_* fields are uninitialized (or both zero)");
+    if (params.w_clamp <= 0.0)
+	throw runtime_error("rf_kernels::online_mask_filler: w_clamp is uninitialized (or <= 0)");
+    if (params.w_cutoff <= 0.0)
+	throw runtime_error("rf_kernels::online_mask_filler: w_cutoff is uninitialized (or < 0)");
+    if (intensity == nullptr)
+	throw runtime_error("rf_kernels::online_mask_filler: 'intensity' pointer is null");
+    if (weights == nullptr)
+	throw runtime_error("rf_kernels::online_mask_filler: 'weights' pointer is null");
 }
 
 
@@ -282,43 +320,33 @@ void _online_mask_fill(const online_mask_filler_params &params, int nfreq, int n
 
 // modify_weights = false is required for bonsai
 // modify_weights = true makes the most sense for rf_pipelines
-void online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-		      float *intensity, float *weights, float *running_var, float *running_weights,
-		      uint64_t rng[8])
+
+void online_mask_filler::mask_fill(int nt_chunk, int stride, float *intensity, float *weights)
 {
-    if (params.overwrite_on_wt0)
+    _check_args(*this, nt_chunk, stride, intensity, weights);
+
+    if (overwrite_on_wt0)
     {
-        if (params.modify_weights)
-  	    _online_mask_fill<true, true> (params, nfreq, nt_chunk, stride, intensity, weights, running_var, running_weights, rng);
+        if (modify_weights)
+  	    _online_mask_fill<true, true> (*this, nt_chunk, stride, intensity, weights);
         else
-	    _online_mask_fill<true, false> (params, nfreq, nt_chunk, stride, intensity, weights, running_var, running_weights, rng);
+	    _online_mask_fill<true, false> (*this, nt_chunk, stride, intensity, weights);
     }
     else
     {
-        if (params.modify_weights)
-  	    _online_mask_fill<false, true> (params, nfreq, nt_chunk, stride, intensity, weights, running_var, running_weights, rng);
+        if (modify_weights)
+  	    _online_mask_fill<false, true> (*this, nt_chunk, stride, intensity, weights);
         else
-	    _online_mask_fill<false, false> (params, nfreq, nt_chunk, stride, intensity, weights, running_var, running_weights, rng);
+	    _online_mask_fill<false, false> (*this, nt_chunk, stride, intensity, weights);
     }
 }
 
 
 // ----------------------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------------------
-// Based on Maya code in rf_pipelines (scalar_mask_fill() in online_mask_filler.cpp)
-// with a few changes as follows which were helpful when incorporating it into bonsai.
 //
-//   - We don't actually modify the weights array (we do update the running_weights)
-//     Not sure what's best here, maybe define a boolean flag for maximum flexibility?
-//
-//   - We do modify the intensity array (in the case where the intensity is unmasked),
-//     by applying (i.e. multiplying by) the running_weight.
-//
-//   - For consistency, in the case where an intensity value is masked, we apply the
-//     running_weight to the random value which is simulated.  I.e., the simulated
-//     random intensity has variance (3 * running_weight^2 * running_variance).
-//
-//   - See "KMS" below for two more minor changes...
+// get_v1(): Helper for online_mask_filler::scalar_mask_fill()
+
 
 inline bool get_v1(const float *intensity, const float *weights, float &v1)
 {
@@ -347,18 +375,15 @@ inline bool get_v1(const float *intensity, const float *weights, float &v1)
     return true;
 }
 
-void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride,
-			     float *intensity, float *weights, float *running_var, float *running_weights,
-			     xorshift_plus &rng)
+
+void online_mask_filler::scalar_mask_fill(int nt_chunk, int stride, float *intensity, float *weights)
 {
-    const int v1_chunk = params.v1_chunk;
-    const float w_clamp = params.w_clamp;
-    const float var_weight = params.var_weight;
-    const float var_clamp_add = params.var_clamp_add;
-    const float var_clamp_mult = params.var_clamp_mult;
-    const float w_cutoff = params.w_cutoff;
-    const bool overwrite_on_wt0 = params.overwrite_on_wt0;
-    const bool modify_weights = params.modify_weights;
+    _check_args(*this, nt_chunk, stride, intensity, weights);
+
+    // This ordering of constructor arguments makes xorshift_plus (scalar code)
+    // equivalent to vec_xorshift_plus (vector code).
+    uint64_t *rs = this->rng_state;    
+    xorshift_plus rng(rs[0], rs[4], rs[1], rs[5], rs[2], rs[6], rs[3], rs[7]);
     
     float rn[8]; // holds random numbers for mask filling
     
@@ -450,6 +475,15 @@ void scalar_online_mask_fill(const online_mask_filler_params &params, int nfreq,
 	running_var[ifreq] = rv;
 	running_weights[ifreq] = rw;
     }
+
+    rs[0] = rng.seeds[0];
+    rs[1] = rng.seeds[2];
+    rs[2] = rng.seeds[4];
+    rs[3] = rng.seeds[6];
+    rs[4] = rng.seeds[1];
+    rs[5] = rng.seeds[3];
+    rs[6] = rng.seeds[5];
+    rs[7] = rng.seeds[7];
 }
 
 

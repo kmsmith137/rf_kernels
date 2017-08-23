@@ -13,22 +13,22 @@ struct online_mask_filler_timing_thread : public kernel_timing_thread {
 
     virtual void thread_body() override 
     {
-	online_mask_filler_params kparams;
-
-	float *running_variance = aligned_alloc<float> (nfreq);
-	float *running_weights = aligned_alloc<float> (nfreq);
-	uint64_t rng_state[8];
+	// Arbitrary parameters
+	online_mask_filler mf(nfreq);
+	mf.v1_chunk = 32;
+	mf.var_weight = 0.01;
+	mf.var_clamp_add = 0.01;
+	mf.var_clamp_mult = 0.01;
+	mf.w_clamp = 0.01;
+	mf.w_cutoff = 0.1;
 
 	this->allocate();
 	this->start_timer();
 
 	for (int i = 0; i < niter; i++)
-	    online_mask_fill(kparams, nfreq, nt_chunk, stride, intensity, weights, running_variance, running_weights, rng_state);
+	    mf.mask_fill(nt_chunk, stride, intensity, weights);
 
 	this->stop_timer2("online_mask_filler");
-    
-	free(running_variance);
-	free(running_weights);
     }
 };
 

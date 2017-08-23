@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <cassert>
+#include <cstring>
 #include <random>
 
 #include "rf_kernels/unit_testing.hpp"
@@ -69,7 +70,7 @@ inline void gen_weights(std::mt19937 &rng, float *weights, float pfailv1, float 
 }
 
 
-void test_filler(std::mt19937 &rng, const online_mask_filler_params &params, int nfreq, int nt_chunk, int stride, int niter)
+void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, int stride, int niter)
 {
     // Used when randomly generating weights below.
     const float pfailv1 = 0.2;
@@ -78,23 +79,26 @@ void test_filler(std::mt19937 &rng, const online_mask_filler_params &params, int
     // Assumed by gen_weights() below.
     assert (nt_chunk % 32 == 0);
 
+    const int nfreq = params.nfreq;
+
+    // Hmm, lack of a copy constructor is awkward here..
+    online_mask_filler params2(nfreq);
+    params2.v1_chunk = params.v1_chunk;
+    params2.var_weight = params.var_weight;
+    params2.var_clamp_add = params.var_clamp_add;
+    params2.var_clamp_mult = params.var_clamp_mult;
+    params2.w_clamp = params.w_clamp;
+    params2.w_cutoff = params.w_cutoff;
+    params2.overwrite_on_wt0 = params.overwrite_on_wt0;
+    params2.modify_weights = params.modify_weights;
+    
     vector<float> intensity(nfreq * stride);
     vector<float> weights(nfreq * stride);
     vector<float> intensity2(nfreq * stride);
-    vector<float> weights2(nfreq * stride);
-    
+    vector<float> weights2(nfreq * stride);    
+
     // As in the prng unit test, we need to ensure both random number generators are initialized with the same seed values!
-    unsigned int rn1 = rng();
-    unsigned int rn2 = rng();
-    unsigned int rn3 = rng();
-    unsigned int rn4 = rng();
-    unsigned int rn5 = rng();
-    unsigned int rn6 = rng();
-    unsigned int rn7 = rng();
-    unsigned int rn8 = rng();
-    
-    uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
-    xorshift_plus sca_rn(rn1, rn2, rn3, rn4, rn5, rn6, rn7, rn8);
+    memcpy(params2.rng_state, params.rng_state, 64);
     
     for (int iter=0; iter<niter; iter++)
     {
@@ -123,11 +127,11 @@ void test_filler(std::mt19937 &rng, const online_mask_filler_params &params, int
 	uniform_real_distribution<float> w_dis(0.0, 1.0);
 	// Variance between 0.0 and 0.02
 	uniform_real_distribution<float> var_dis(0.0, 0.02);
-    
-	vector<float> running_var(nfreq);
-	vector<float> running_var2(nfreq);
-	vector<float> running_weights(nfreq);
-	vector<float> running_weights2(nfreq);
+
+	float *running_var = params.running_var.get();
+	float *running_var2 = params2.running_var.get();
+	float *running_weights = params.running_weights.get();
+	float *running_weights2 = params2.running_weights.get();
 	
 	// Make two copies
 	for (int i=0; i<nfreq; i++)
@@ -139,16 +143,8 @@ void test_filler(std::mt19937 &rng, const online_mask_filler_params &params, int
 	}
 
 	// Process away!
-	float *running_weights_arr = &running_weights[0];
-	float *running_var_arr = &running_var[0];
-	float *running_weights_arr2 = &running_weights2[0];
-	float *running_var_arr2 = &running_var2[0];
-
-	online_mask_fill(params, nfreq, nt_chunk, stride, &intensity[0], &weights[0], 
-			 running_var_arr, running_weights_arr, rng_state);
-
-	scalar_online_mask_fill(params, nfreq, nt_chunk, stride, &intensity2[0], &weights2[0], 
-				running_var_arr2, running_weights_arr2, sca_rn);
+	params.mask_fill(nt_chunk, stride, &intensity[0], &weights[0]);
+	params2.scalar_mask_fill(nt_chunk, stride, &intensity2[0], &weights2[0]);
 
 	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be 
 	// helpful for debugging any future errors! So it's easy to see where things have gone wrong!
@@ -204,7 +200,12 @@ void test_filler(int nouter=100)
  
     // In each "outer" iteration, the parameters of the unit test are randomized.
     for (int iouter = 0; iouter < nouter; iouter++) {
-	online_mask_filler_params params;
+	int nfreq = randint(rng, 1, 65);
+	int nt_chunk = randint(rng, 1, 9) * 32;   // must be multiple of v1_chunk=32
+	int stride = randint(rng, nt_chunk, 2*nt_chunk);
+	int ninner = 100;   // Number of "inner" iterations
+
+	online_mask_filler params(nfreq);
 	params.v1_chunk = 32;   // currently hardcoded
 	params.var_weight = uniform_rand(rng, 1.0e-3, 0.1);
 	params.var_clamp_add = uniform_rand(rng, 1.0e-10, 0.1);
@@ -214,18 +215,13 @@ void test_filler(int nouter=100)
 	params.overwrite_on_wt0 = randint(rng, 0, 2);
 	params.modify_weights = randint(rng, 0, 2);
 
-	int nfreq = randint(rng, 1, 65);
-	int nt_chunk = randint(rng, 1, 9) * params.v1_chunk;   // must be multiple of v1_chunk
-	int stride = randint(rng, nt_chunk, 2*nt_chunk);
-	int ninner = 100;   // Number of "inner" iterations
-
 #if 0
 	cout << "outer iteration " << iouter << endl
 	     << "    overwrite_on_wt0 = " << params.overwrite_on_wt0 << endl
 	     << "    modify_weights = " << params.modify_weights << endl;
 #endif
 	
-	test_filler(rng, params, nfreq, nt_chunk, stride, ninner);
+	test_filler(rng, params, nt_chunk, stride, ninner);
     }
 
     cout << "***online_mask_filler unit test passed!" << endl;

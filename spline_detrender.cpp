@@ -28,7 +28,7 @@ spline_detrender::spline_detrender(int nfreq_, int nbins_, float epsilon_) :
 	throw runtime_error("rf_kernels::spline_detrender: expected nfreq >= 16 * nbins");
 
     // FIXME improve the epsilon asserts
-    if (epsilon < 0)
+    if (epsilon <= 0)
 	throw runtime_error("rf_kernels::spline_detrender: expected epsilon >= 0");
 
     // Allocate
