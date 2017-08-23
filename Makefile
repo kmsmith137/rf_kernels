@@ -70,7 +70,7 @@ unittest_touchfiles/ut_%: %
 online_mask_filler.o: online_mask_filler.cpp rf_kernels/internals.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spline_detrender.hpp
+spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
 unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp

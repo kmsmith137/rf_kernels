@@ -2,6 +2,7 @@
 
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/spline_detrender.hpp"
+#include "rf_kernels/spline_detrender_internals.hpp"
 
 using namespace std;
 
@@ -76,6 +77,28 @@ spline_detrender::~spline_detrender()
 }
 
 
+void spline_detrender::detrend(int nt_chunk, int stride, float *intensity, const float *weights)
+{
+    if (nt_chunk <= 0)
+	throw runtime_error("rf_kernels::spline_detrender: nt_chunk must be > 0");
+    if (nt_chunk % 8 != 0)
+	throw runtime_error("rf_kernels::spline_detrender: nt_chunk must be divisible by 8");
+    if (!intensity || !weights)
+	throw runtime_error("rf_kernels: null pointer passed to spline_detrender::detrend()");
+    if (abs(stride) < nt_chunk)
+	throw runtime_error("rf_kernels::spline_detrender: expected abs(stride) >= nt_chunk");
+
+    for (int it = 0; it < nt_chunk; it += 8) {
+	_kernel_ninv(stride, intensity + it, weights + it);
+	_kernel_fit_pass1();
+	_kernel_fit_pass2();
+	_kernel_fit_pass3();
+	_kernel_detrend(stride, intensity + it);
+    }
+}
+
+
+// Helper function for spline_detrender constructor
 void _spline_detrender_init(int *bin_delim, float *poly_vals, int nx, int nbins)
 {
     if (nx <= 0)
