@@ -246,14 +246,14 @@ struct big_cholesky {
 // refsd_*: a reference implementation of spline detrending (1D).
 
 
-struct refsd_params {
+struct reference_spline_detrender {
     const int nx;
     const int nbins;
 
     vector<int> bin_delim;
     vector<float> poly_vals;
     
-    refsd_params(int nx, int nbins);
+    reference_spline_detrender(int nx, int nbins);
 
     // 'out' has length nx, 'coeffs' has length (2*nbins+2).
     void eval_model(float *out, const float *coeffs);
@@ -276,7 +276,7 @@ struct refsd_params {
 };
 
 
-refsd_params::refsd_params(int nx_, int nbins_) :
+reference_spline_detrender::reference_spline_detrender(int nx_, int nbins_) :
     nx(nx_), 
     nbins(nbins_),
     bin_delim(nbins_+1, 0),
@@ -286,7 +286,7 @@ refsd_params::refsd_params(int nx_, int nbins_) :
 }
 
 
-void refsd_params::eval_model(float *out, const float *coeffs)
+void reference_spline_detrender::eval_model(float *out, const float *coeffs)
 {
     memset(out, 0, nx * sizeof(*out));
 
@@ -297,7 +297,7 @@ void refsd_params::eval_model(float *out, const float *coeffs)
 }
 
 
-void refsd_params::eval_model_from_scratch(float *out, const float *coeffs)
+void reference_spline_detrender::eval_model_from_scratch(float *out, const float *coeffs)
 {
     for (int i = 0; i < nx; i++) {
 	float x = (i+0.5) / float(nx) * float(nbins);   // note: 0 < x < nbins
@@ -307,7 +307,7 @@ void refsd_params::eval_model_from_scratch(float *out, const float *coeffs)
 }
 
 
-void refsd_params::analyze_bin(float ninv[16], float ninvx[4], const float *intensity, const float *weights, int b)
+void reference_spline_detrender::analyze_bin(float ninv[16], float ninvx[4], const float *intensity, const float *weights, int b)
 {
     memset(ninv, 0, 16 * sizeof(ninv[0]));
     memset(ninvx, 0, 4 * sizeof(ninvx[0]));
@@ -322,7 +322,7 @@ void refsd_params::analyze_bin(float ninv[16], float ninvx[4], const float *inte
     }
 }
 
-big_cholesky refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg)
+big_cholesky reference_spline_detrender::fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg)
 {
     float wsum = 0.0;
     for (int i = 0; i < nx; i++)
@@ -365,7 +365,7 @@ big_cholesky refsd_params::fit_model(float *coeffs, const float *intensity, cons
 }
 
 
-void refsd_params::detrend(float *intensity, const float *weights, float epsilon_reg)
+void reference_spline_detrender::detrend(float *intensity, const float *weights, float epsilon_reg)
 {
     vector<float> coeffs(2*nbins+2);
     fit_model(&coeffs[0], intensity, weights, epsilon_reg);
@@ -378,7 +378,7 @@ void refsd_params::detrend(float *intensity, const float *weights, float epsilon
 }
 
 
-void refsd_params::make_sparse_weights(std::mt19937 &rng, float *weights)
+void reference_spline_detrender::make_sparse_weights(std::mt19937 &rng, float *weights)
 {
     memset(&weights[0], 0, nx * sizeof(float));
 
@@ -401,17 +401,17 @@ void refsd_params::make_sparse_weights(std::mt19937 &rng, float *weights)
 
 static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins)
 {
-    refsd_params params(nx, nbins);
+    reference_spline_detrender sd(nx, nbins);
 
-    // Test 1: compare refsd_params::eval_model() and refsd_params::eval_model_from_scratch().
+    // Test 1: compare reference_spline_detrender::eval_model() and reference_spline_detrender::eval_model_from_scratch().
     // This indirectly the poly_vals generation in _spline_detrender_init().
     
     vector<float> intensity(nx, 0.0);
     vector<float> in_coeffs = uniform_randvec(rng, 2*nbins+2, -1.0, 1.0);
-    params.eval_model(&intensity[0], &in_coeffs[0]);
+    sd.eval_model(&intensity[0], &in_coeffs[0]);
 
     vector<float> intensity2(nx, 0.0);
-    params.eval_model_from_scratch(&intensity2[0], &in_coeffs[0]);
+    sd.eval_model_from_scratch(&intensity2[0], &in_coeffs[0]);
 
     float eps1 = maxdiff(intensity, intensity2);
     if (eps1 > 1.0e-4) {
@@ -422,12 +422,12 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
     // Test 2: test detrending in "well-conditioned" case where all weights are positive.
     //
     // In this case, the strongest test is to take epsilon_reg=0, and check that
-    // refsd_params::fit_model() recovers the model coefficients to high accuracy.
+    // reference_spline_detrender::fit_model() recovers the model coefficients to high accuracy.
 
     vector<float> weights = uniform_randvec(rng, nx, 0.1, 1.0);
     
     vector<float> out_coeffs(2*nbins+2, 0.0);
-    params.fit_model(&out_coeffs[0], &intensity[0], &weights[0], 0);  // epsilon_reg=0
+    sd.fit_model(&out_coeffs[0], &intensity[0], &weights[0], 0);  // epsilon_reg=0
 
     float eps2 = maxdiff(in_coeffs, out_coeffs);
     if (eps2 > 1.0e-4) {
@@ -441,8 +441,8 @@ static void test_reference_spline_detrender(std::mt19937 &rng, int nx, int nbins
     // that the weighted RMS intensity after detrending is < 0.01, after detrending
     // with epsilon_reg=1.0e-4.
 
-    params.make_sparse_weights(rng, &weights[0]);
-    params.detrend(&intensity[0], &weights[0], 1.0e-4);  // epsilon_reg = 10^(-4)
+    sd.make_sparse_weights(rng, &weights[0]);
+    sd.detrend(&intensity[0], &weights[0], 1.0e-4);  // epsilon_reg = 10^(-4)
 
     float eps3 = weighted_rms_1d(intensity, weights);
     if (eps3 > 1.0e-2) {
@@ -475,7 +475,7 @@ static void test_reference_spline_detrender(std::mt19937 &rng)
 // -------------------------------------------------------------------------------------------------
 
 
-// Helper for test_fast_kernels
+// Helper for test_fast_kernels()
 inline void _compare(const char *str, float x_ref, float x_fast, float epsilon)
 {
     float delta = abs(x_ref - x_fast);
@@ -495,7 +495,7 @@ inline void _compare(const char *str, float x_ref, float x_fast, float epsilon)
 static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int stride, float epsilon_reg)
 {
     spline_detrender fast_sd(nfreq, nbins, epsilon_reg);
-    refsd_params ref_sd(nfreq, nbins);
+    reference_spline_detrender ref_sd(nfreq, nbins);
 
     vector<float> ref_intensity = uniform_randvec(rng, 8*nfreq, -1.0, 1.0);
     vector<float> ref_weights = uniform_randvec(rng, 8*nfreq, 0.1, 1.0);
@@ -622,6 +622,84 @@ static void test_fast_kernels(std::mt19937 &rng)
 
 
 // -------------------------------------------------------------------------------------------------
+//
+// Final, self-contained test of the fast spline_detrender.
+
+
+static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_chunk, int stride)
+{
+    float *intensity = aligned_alloc<float> (nfreq * stride);
+    float *weights = aligned_alloc<float> (nfreq * stride);
+
+    spline_detrender sd(nfreq, nbins, 1.0e-4);        // epsilon_reg = 10^(-4)
+    reference_spline_detrender ref_sd(nfreq, nbins);  // for eval_model()
+
+    vector<float> tmp_c(2*nbins+2, 0.0);
+    vector<float> tmp_i(nfreq, 0.0);
+    vector<float> tmp_w(nfreq, 0.0);
+
+    for (int it = 0; it < nt_chunk; it++) {
+	for (int i = 0; i < 2*nbins+2; i++)
+	    tmp_c[i] = uniform_rand(rng, -1.0, 1.0);
+
+	ref_sd.eval_model(&tmp_i[0], &tmp_c[0]);
+	ref_sd.make_sparse_weights(rng, &tmp_w[0]);
+    
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    intensity[ifreq*stride + it] = tmp_i[ifreq];
+	    weights[ifreq*stride + it] = tmp_w[ifreq];
+	}
+    }
+
+    sd.detrend(nt_chunk, stride, intensity, weights);
+
+    float max_wrms = 0.0;
+
+    for (int it = 0; it < nt_chunk; it++) {
+	float wrms_num = 0.0;
+	float wrms_den = 0.0;
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    float w = weights[ifreq*stride + it];
+	    float i = intensity[ifreq*stride + it];
+
+	    wrms_num += w*i*i;
+	    wrms_den += w;
+	}
+
+	if (wrms_den > 0.0) {
+	    float wrms = sqrt(wrms_num/wrms_den);
+	    max_wrms = max(max_wrms, wrms);
+	}
+    }
+
+    if (max_wrms > 0.02) {
+	cout << "test_fast_detrender() failed: nbins=" << nbins << ", nfreq=" << nfreq
+	     << ", " << nt_chunk << ", " << stride << ", max_wrms=" << max_wrms << endl;
+	exit(1);	
+    }
+
+    free(intensity);
+    free(weights);
+}
+
+
+static void test_fast_detrender(std::mt19937 &rng)
+{
+    for (int iter = 0; iter < 1000; iter++) {
+	int nbins = randint(rng, 1, 10);
+	int nfreq = randint(rng, 64*nbins, 128*nbins);
+	int nt_chunk = 8 * randint(rng, 1, 64);
+	int stride = 8 * randint(rng, nt_chunk/8, nt_chunk/4);
+
+	test_fast_detrender(rng, nbins, nfreq, nt_chunk, stride);
+    }
+
+    cout << "test_fast_detrender: pass" << endl;
+}
+
+
+// -------------------------------------------------------------------------------------------------
 
 
 int main(int argc, char **argv)
@@ -631,8 +709,8 @@ int main(int argc, char **argv)
 
     test_eval_cubic(rng);
     test_reference_spline_detrender(rng);
-    // test_fast_kernels(rng, 32, 1, 8, 1.0);
     test_fast_kernels(rng);
+    test_fast_detrender(rng);
 
     return 0;
 }
