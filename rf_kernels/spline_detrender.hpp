@@ -30,10 +30,10 @@ struct spline_detrender {
     int *bin_delim = nullptr;           // length (nbins+1)
     float *poly_vals = nullptr;         // length (nfreq * 4)
     float *ninv = nullptr;              // length (nbins * 10 * S), where S is the simd size
-    float *ninvx = nullptr;             // length (nbins * 4 * S), where S is the simd size
+    float *ninvx = nullptr;             // length (nbins * 4 * S)
     float *cholesky_invdiag = nullptr;  // length (nbins+1) * 3 * S
     float *cholesky_subdiag = nullptr;  // length (nbins * 4 * S)
-    float *coeffs = nullptr;            // length (nbins * 4 * S)
+    float *coeffs = nullptr;            // length (nbins+1) * 2 * S
 
     uint8_t *allocated_memory = nullptr;
 
@@ -41,6 +41,8 @@ struct spline_detrender {
     inline void _kernel_ninv(int stride, const float *intensity, const float *weights);
     inline void _kernel_detrend(int stride, float *intensity);
     inline void _kernel_fit_pass1();
+    inline void _kernel_fit_pass2();
+    inline void _kernel_fit_pass3();
 };
 
 

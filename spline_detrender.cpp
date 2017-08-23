@@ -36,9 +36,9 @@ spline_detrender::spline_detrender(int nfreq_, int nbins_, float epsilon_) :
     int pv_size = nfreq * 4 * sizeof(float);
     int ninv_size = nbins * 10 * S * sizeof(float);
     int ninvx_size = nbins * 4 * S * sizeof(float);
-    int cdiag_size =(nbins+1) * 3 * S * sizeof(float);
+    int cdiag_size = (nbins+1) * 3 * S * sizeof(float);
     int csdiag_size = nbins * 4 * S * sizeof(float);
-    int coeffs_size = nbins * 4 * S * sizeof(float);
+    int coeffs_size = (nbins+1) * 2 * S * sizeof(float);
 
     int pv_offset = _align(bd_size, 64);
     int ninv_offset = pv_offset + _align(pv_size, 64);
