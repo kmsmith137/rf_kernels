@@ -161,6 +161,7 @@ struct big_cholesky {
     vector<chol2> cholesky_diag;    // length (nbins+1)
     vector<mat2> cholesky_subdiag;  // length (nbins)
 
+
     big_cholesky(const vector<mat2> &a_diag_, const vector<mat2> &a_subdiag_)
 	: a_diag(a_diag_), a_subdiag(a_subdiag_)
     {
@@ -177,6 +178,17 @@ struct big_cholesky {
 	    cholesky_diag[b+1] = chol2(a_diag[b+1] - cholesky_subdiag[b] * cholesky_subdiag[b].transpose());
 	}
     }
+
+
+    // This constructor is a convenient sentinel for unit tests.
+    explicit big_cholesky(int nbins_) :
+	nbins(nbins_),
+	a_diag(nbins+1),
+	a_subdiag(nbins),
+	cholesky_diag(nbins+1),
+	cholesky_subdiag(nbins)
+    { }
+
 
     vector<vec2> apply_a(const vector<vec2> &v)
     {
@@ -253,7 +265,9 @@ struct refsd_params {
     // 'ninv' has length 16, 'ninvx' has length 4, intensity+weights have length nx.
     void analyze_bin(float *ninv, float *ninvx, const float *intensity, const float *weights, int b);
 
-    void fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg);
+    // 'coeffs' has length (2*nbins+2).
+    // Returns the 'big_cholesky' object which contains intermediate quantities (caller may ignore return value)
+    big_cholesky fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg);
 
     void detrend(float *intensity, const float *weights, float epsilon_reg);
 
@@ -308,8 +322,7 @@ void refsd_params::analyze_bin(float ninv[16], float ninvx[4], const float *inte
     }
 }
 
-
-void refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg)
+big_cholesky refsd_params::fit_model(float *coeffs, const float *intensity, const float *weights, float epsilon_reg)
 {
     float wsum = 0.0;
     for (int i = 0; i < nx; i++)
@@ -317,7 +330,7 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 
     if (wsum <= 0.0) {
 	memset(coeffs, 0, (2*nbins+2) * sizeof(*coeffs));
-	return;
+	return big_cholesky(nbins);
     }
 
     float w = wsum * epsilon_reg / float(nbins);    
@@ -347,6 +360,8 @@ void refsd_params::fit_model(float *coeffs, const float *intensity, const float 
 	coeffs[2*b] = v[b].v0;
 	coeffs[2*b+1] = v[b].v1;
     }
+
+    return bc;
 }
 
 
@@ -472,6 +487,16 @@ inline void _compare(const char *str, float x_ref, float x_fast, float epsilon)
 }
 
 
+inline void _show(const char *str, float x_ref, float x_fast, float epsilon)
+{
+    float delta = abs(x_ref - x_fast);
+    cout << str << ": ref=" << x_ref << ", fast=" << x_fast << ", delta=" << delta;
+    if (delta > epsilon)
+	cout << "        ********";
+    cout << endl;
+}
+
+
 static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int stride, float epsilon_reg)
 {
     spline_detrender fast_sd(nfreq, nbins, epsilon_reg);
@@ -522,6 +547,27 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	}
     }
 
+    vector<float> ref_coeffs(8 * (2*nbins+2), 0.0);
+
+    fast_sd._kernel_fit_pass1();
+    
+    for (int s = 0; s < 8; s++) {
+	big_cholesky ref_bc = ref_sd.fit_model(&ref_coeffs[s * (2*nbins+2)], &ref_intensity[s*nfreq], &ref_weights[s*nfreq], epsilon_reg);
+
+	for (int b = 0; b <= nbins; b++) {
+	    _compare("linv00", ref_bc.cholesky_diag[b].linv.a00, fast_sd.cholesky_invdiag[24*b+s], 1.0e-4);
+	    _compare("linv10", ref_bc.cholesky_diag[b].linv.a10, fast_sd.cholesky_invdiag[24*b+8+s], 1.0e-4);
+	    _compare("linv11", ref_bc.cholesky_diag[b].linv.a11, fast_sd.cholesky_invdiag[24*b+16+s], 1.0e-4);
+	}
+
+	for (int b = 0; b < nbins; b++) {
+	    _compare("ls00", ref_bc.cholesky_subdiag[b].a00, fast_sd.cholesky_subdiag[32*b+s], 1.0e-4);
+	    _compare("ls01", ref_bc.cholesky_subdiag[b].a01, fast_sd.cholesky_subdiag[32*b+8+s], 1.0e-4);
+	    _compare("ls10", ref_bc.cholesky_subdiag[b].a10, fast_sd.cholesky_subdiag[32*b+16+s], 1.0e-4);
+	    _compare("ls11", ref_bc.cholesky_subdiag[b].a11, fast_sd.cholesky_subdiag[32*b+24+s], 1.0e-4);
+	}
+    }
+
     free(fast_intensity);
     free(fast_weights);
 }
@@ -553,7 +599,7 @@ int main(int argc, char **argv)
 
     test_eval_cubic(rng);
     test_reference_spline_detrender(rng);
-    // test_fast_kernels(rng, 16, 1, 8, 0.0);
+    // test_fast_kernels(rng, 16, 1, 8, 1.0);
     test_fast_kernels(rng);
 
     return 0;

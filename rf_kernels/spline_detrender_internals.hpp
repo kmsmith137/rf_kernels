@@ -143,9 +143,13 @@ inline void spline_detrender::_kernel_fit_pass1()
     }
     
     __m256 w = wsum * _mm256_set1_ps(epsilon / float(nbins));
-    __m256 mask = _mm256_cmp_ps(w, _mm256_setzero_ps(), _CMP_GT_OQ);
+    __m256 mask = _mm256_cmp_ps(wsum, _mm256_setzero_ps(), _CMP_GT_OQ);
 
-    __m256 ninv00, ninv01, ninv10, ninv11;
+    __m256 ls00 = _mm256_setzero_ps();
+    __m256 ls01 = _mm256_setzero_ps();
+    __m256 ls10 = _mm256_setzero_ps();
+    __m256 ls11 = _mm256_setzero_ps();
+
     int b = 0;
 
     for (;;) {
@@ -153,30 +157,37 @@ inline void spline_detrender::_kernel_fit_pass1()
 	// Compute cholesky_invdiag[b].
 	// Here, 0 <= b <= nbins.
 
-	ninv00 = _mm256_setzero_ps();
-	ninv01 = _mm256_setzero_ps();
-	ninv11 = _mm256_setzero_ps();
+	__m256 ninv00 = _mm256_setzero_ps();
+	__m256 ninv01 = _mm256_setzero_ps();
+	__m256 ninv11 = _mm256_setzero_ps();
 
 	if (b > 0) {
 	    ninv00 += _mm256_loadu_ps(ninv + 80*(b-1) + 56);  // w22
 	    ninv01 += _mm256_loadu_ps(ninv + 80*(b-1) + 64);  // w23
 	    ninv11 += _mm256_loadu_ps(ninv + 80*(b-1) + 72);  // w33
+
 	    ninv00 += w * _mm256_set1_ps(r00);
 	    ninv01 -= w * _mm256_set1_ps(r01);   // note minus sign here
 	    ninv11 += w * _mm256_set1_ps(r11);
+
+	    ninv00 -= (ls00*ls00 + ls01*ls01);
+	    ninv01 -= (ls00*ls10 + ls01*ls11);
+	    ninv11 -= (ls10*ls10 + ls11*ls11);
 	}
 
 	if (b < nbins) {
 	    ninv00 += _mm256_loadu_ps(ninv + 80*b);       // w00
 	    ninv01 += _mm256_loadu_ps(ninv + 80*b + 8);   // w01
 	    ninv11 += _mm256_loadu_ps(ninv + 80*b + 32);  // w11
+
 	    ninv00 += w * _mm256_set1_ps(r00);
 	    ninv01 += w * _mm256_set1_ps(r01);
 	    ninv11 += w * _mm256_set1_ps(r11);
 	}
 
-	// Cholesky decomposition.
+	// Cholesky-factorize 2-by-2 matrix.
 	// I decided to use _mm256_sqrt_ps(), rather than the faster-but-less-accurate _mm256_rsqrt_ps().
+
 	__m256 zero = _mm256_setzero_ps();
 	__m256 one = _mm256_set1_ps(1.0);
 	__m256 l00 = _mm256_blendv_ps(one, _mm256_sqrt_ps(ninv00), mask);
@@ -196,26 +207,26 @@ inline void spline_detrender::_kernel_fit_pass1()
 	// Compute cholesky_subdiag[b].
 	// Here, 0 <= b < nbins.
 
-	ninv00 = _mm256_loadu_ps(ninv + 80*b + 16);  // w20
-	ninv01 = _mm256_loadu_ps(ninv + 80*b + 40);  // w21
-	ninv10 = _mm256_loadu_ps(ninv + 80*b + 24);  // w30
-	ninv11 = _mm256_loadu_ps(ninv + 80*b + 48);  // w31
+	__m256 s00 = _mm256_loadu_ps(ninv + 80*b + 16);  // w20
+	__m256 s01 = _mm256_loadu_ps(ninv + 80*b + 40);  // w21
+	__m256 s10 = _mm256_loadu_ps(ninv + 80*b + 24);  // w30
+	__m256 s11 = _mm256_loadu_ps(ninv + 80*b + 48);  // w31
 
-	ninv00 -= w * _mm256_set1_ps(r00);  // r20 = -r00
-	ninv01 -= w * _mm256_set1_ps(r01);  // r21 = -r01
-	ninv10 += w * _mm256_set1_ps(r01);  // r30 = r01
-	ninv11 += w * _mm256_set1_ps(r31);
+	s00 -= w * _mm256_set1_ps(r00);  // r20 = -r00
+	s01 -= w * _mm256_set1_ps(r01);  // r21 = -r01
+	s10 += w * _mm256_set1_ps(r01);  // r30 = r01
+	s11 += w * _mm256_set1_ps(r31);
 
 	// Multiply on the right by L^{-T}
-	__m256 s00 = ninv00 * linv00;
-	__m256 s01 = ninv00 * linv10 + ninv01 * linv11;
-	__m256 s10 = ninv10 * linv00;
-	__m256 s11 = ninv10 * linv10 + ninv11 * linv11;
+	ls00 = s00 * linv00;
+	ls01 = s00 * linv10 + s01 * linv11;
+	ls10 = s10 * linv00;
+	ls11 = s10 * linv10 + s11 * linv11;
 
-	_mm256_storeu_ps(cholesky_subdiag + 32*b, s00);
-	_mm256_storeu_ps(cholesky_subdiag + 32*b + 8, s01);
-	_mm256_storeu_ps(cholesky_subdiag + 32*b + 16, s10);
-	_mm256_storeu_ps(cholesky_subdiag + 32*b + 24, s11);
+	_mm256_storeu_ps(cholesky_subdiag + 32*b, ls00);
+	_mm256_storeu_ps(cholesky_subdiag + 32*b + 8, ls01);
+	_mm256_storeu_ps(cholesky_subdiag + 32*b + 16, ls10);
+	_mm256_storeu_ps(cholesky_subdiag + 32*b + 24, ls11);
 
 	b++;
     }
