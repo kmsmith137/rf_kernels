@@ -24,13 +24,11 @@ struct online_mask_filler {
     // Note that the defaults are generally invalid parameter values!
     // This is so we can throw an exception if the caller forgets to initialize them.
     int v1_chunk = 32;
-    float var_weight = 0.0;         // running_variance decay constant
-    float var_clamp_add = 0.0;      // max allowed additive change in running_variance per v1_chunk (setting to a small value disables)
-    float var_clamp_mult = 0.0;     // max allowed fractional change in running_variance per v1_chunk
+    float var_weight = 0.0;         // running_variance decay constant per v1_chunk
     float w_clamp = 0.0;            // change in running_weight (either positive or negative) per v1_chunk
     float w_cutoff = -1.0;          // threshold weight below which intensity is considered masked
-    bool overwrite_on_wt0 = true;   // if the weights drop to zero, overwrite the intensity with the first successful v1 instead of restricting it to v1_clamp
-    bool modify_weights = false;    // if false, the weights are unmodified by the kernel, but the intensity is multiplied by the weights (wanted in bonsai)
+    bool modify_weights = true;
+    bool multiply_intensity_by_weights = false;
 
     // This is the fast kernel!
     // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk) with spacing 'stride' between frequency channels.
@@ -44,6 +42,7 @@ struct online_mask_filler {
     const int nfreq;
     std::unique_ptr<float[]> running_var;
     std::unique_ptr<float[]> running_weights;
+    std::unique_ptr<float[]> running_var_denom;
     uint64_t rng_state[8];
     
     // Disallow copying (since we use std::unique_ptr).

@@ -34,38 +34,32 @@ inline bool equality_checker(float a, float b, float epsilon)
 // gen_weights(): generates 32 random weights (one v1_chunk)
 //
 // This exists solely for the unit test of the online mask filler!
-// This is just gen_floats with extra pfailv1 and pallzero parameters that 
-// dictate whether a group of 32 random numbers (which it generates at once) should result
-// in a failed v1 estimate (i.e. >=24 weights less than the cutoff) or whether
-// all weight values should be zero. Currently, the implementation is a little 
-// boneheaded and can definitely be imporved...
+// The pallzero parameter dictates whether a group of 32 random numbers 
+// (which it generates at once) should all be zero.
 //
 // KMS: this was previously a member function of 'struct xorshift_plus', but I switched
 // to using std::mt19937, since I wanted to make some minor changes which were easier
 // using the standard library RNG.
 
 
-inline void gen_weights(std::mt19937 &rng, float *weights, float pfailv1, float pallzero, float w_cutoff)
+inline void gen_weights(std::mt19937 &rng, float *weights, float pallzero, float w_cutoff)
 {
     // If the first random number generated is less than pallzero, we make it all zero.
-    // If the first random number generated is less than pallzero + pfailv1 but
-    // greater than pallzero, we make sure the v1 fails.  Else, we just fill weights randomly!
 
     if (uniform_rand(rng) < pallzero) {
 	for (int i = 0; i < 32; i++)
 	    weights[i] = 0.0;
     }
-    else if (uniform_rand(rng) < pfailv1) {
-	// This scheme guarantees that the v1 will fail!
-	for (int i = 0; i < 32; i++)
-	    weights[i] = uniform_rand(rng, 0.0, 0.99 * w_cutoff);
-	for (int i = 0; i < 8; i++)
-	    weights[randint(rng,0,32)] = uniform_rand(rng, 1.01 * w_cutoff, 1.0);
-    }
     else {
-	// Avoid generating weights too close to w_cutoff
-	for (int i = 0; i < 32; i++)
-	    weights[i] = (uniform_rand(rng) < 0.5) ? uniform_rand(rng, 0.0, 0.99*w_cutoff) : uniform_rand(rng, 1.01*w_cutoff, 1.0);
+	// Avoid generating weights too close to w_cutoff, unless w_cutoff=0
+	for (int i = 0; i < 32; i++) {
+	    if (uniform_rand(rng) < 0.5)
+		weights[i] = uniform_rand(rng, 1.01*w_cutoff, 1.0);
+	    else if (w_cutoff > 0.0)
+		weights[i] = uniform_rand(rng, 0.0, 0.99*w_cutoff);
+	    else
+		weights[i] = 0.0;
+	}
     }
 }
 
@@ -73,7 +67,6 @@ inline void gen_weights(std::mt19937 &rng, float *weights, float pfailv1, float 
 void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, int stride, int niter)
 {
     // Used when randomly generating weights below.
-    const float pfailv1 = 0.2;
     const float pallzero = 0.2;
 
     // Assumed by gen_weights() below.
@@ -85,12 +78,10 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
     online_mask_filler params2(nfreq);
     params2.v1_chunk = params.v1_chunk;
     params2.var_weight = params.var_weight;
-    params2.var_clamp_add = params.var_clamp_add;
-    params2.var_clamp_mult = params.var_clamp_mult;
     params2.w_clamp = params.w_clamp;
     params2.w_cutoff = params.w_cutoff;
-    params2.overwrite_on_wt0 = params.overwrite_on_wt0;
     params2.modify_weights = params.modify_weights;
+    params2.multiply_intensity_by_weights = params.multiply_intensity_by_weights;
     
     vector<float> intensity(nfreq * stride);
     vector<float> weights(nfreq * stride);
@@ -113,7 +104,7 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
 	// Use custom function to generate weights 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	    for (int it = 0; it < nt_chunk; it += 32)
-		gen_weights(rng, &weights[ifreq*stride + it], pfailv1, pallzero, params.w_cutoff);
+		gen_weights(rng, &weights[ifreq*stride + it], pallzero, params.w_cutoff);
 	
 	// Copy
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
@@ -208,16 +199,14 @@ void test_filler(int nouter=100)
 	online_mask_filler params(nfreq);
 	params.v1_chunk = 32;   // currently hardcoded
 	params.var_weight = uniform_rand(rng, 1.0e-3, 0.1);
-	params.var_clamp_add = uniform_rand(rng, 1.0e-10, 0.1);
-	params.var_clamp_mult = uniform_rand(rng, 1.0e-10, 0.1);
 	params.w_clamp = uniform_rand(rng, 1.0e-10, 1.0);
-	params.w_cutoff = uniform_rand(rng, 0.1, 0.9);
-	params.overwrite_on_wt0 = randint(rng, 0, 2);
+	params.w_cutoff = randint(rng,0,4) ? uniform_rand(rng, 0.1, 0.9) : 0.0;
 	params.modify_weights = randint(rng, 0, 2);
+	params.multiply_intensity_by_weights = randint(rng, 0, 2);
 
 #if 0
 	cout << "outer iteration " << iouter << endl
-	     << "    overwrite_on_wt0 = " << params.overwrite_on_wt0 << endl
+	     << "    multiply_intensity_by_weights = " << params.multiply_intensity_by_weights << endl
 	     << "    modify_weights = " << params.modify_weights << endl;
 #endif
 	

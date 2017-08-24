@@ -13,14 +13,14 @@ struct online_mask_filler_timing_thread : public kernel_timing_thread {
 
     virtual void thread_body() override 
     {
-	// Arbitrary parameters
+	// bonsai-like parameters
 	online_mask_filler mf(nfreq);
 	mf.v1_chunk = 32;
 	mf.var_weight = 0.01;
-	mf.var_clamp_add = 0.01;
-	mf.var_clamp_mult = 0.01;
 	mf.w_clamp = 0.01;
 	mf.w_cutoff = 0.1;
+	mf.modify_weights = false;
+	mf.multiply_intensity_by_weights = true;
 
 	this->allocate();
 	this->start_timer();
