@@ -7,6 +7,8 @@
 #error "This source file needs to be compiled with C++0x support (g++ -std=c++0x)"
 #endif
 
+#include <cstdint>
+
 namespace rf_kernels {
 #if 0
 }  // emacs pacifier

@@ -1,8 +1,8 @@
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 
-#include "simd_helpers/simd_float32.hpp"
-#include "simd_helpers/simd_ntuple.hpp"
+#include <simd_helpers/simd_float32.hpp>
+#include <simd_helpers/simd_ntuple.hpp>
 
 #ifdef __AVX__
 constexpr int S = 8;
