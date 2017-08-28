@@ -53,40 +53,32 @@ inline downsampling_kernel_t get_kernel(int Df, int Dt)
 }
 
 
-// -------------------------------------------------------------------------------------------------
-//
-// Populating global kernel table
-
-
-
 template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
-inline void _populate_global_kernel_table1()
-{ }
+inline void _populate1() { }
 
 template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
-inline void _populate_global_kernel_table1()
+inline void _populate1()
 {
-    _populate_global_kernel_table1<Df,(Dt/2)> ();
+    _populate1<Df,(Dt/2)> ();
     global_kernel_table[{Df,Dt}] = kernel_wi_downsample_Df_Dt<Df,Dt>;
 }
 
 
 template<int Df, int Dt, typename enable_if<(Df==0),int>::type=0>
-inline void _populate_global_kernel_table2()
-{ }
+inline void _populate2() { }
 
 // Called for (Df,Dt)=(*,8).
 template<int Df, int Dt, typename enable_if<(Df>0),int>::type=0>
-inline void _populate_global_kernel_table2()
+inline void _populate2()
 {
-    _populate_global_kernel_table2<(Df/2),Dt> ();
-    _populate_global_kernel_table1<Df,Dt> ();
+    _populate2<(Df/2),Dt> ();
+    _populate1<Df,Dt> ();
 }
 
 
 namespace {
     struct X {
-	X() { _populate_global_kernel_table2<256,32>(); }
+	X() { _populate2<256,32>(); }
     } x;
 }
 
