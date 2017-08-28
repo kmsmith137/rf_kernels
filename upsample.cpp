@@ -1,8 +1,3 @@
-#include <array>
-#include <utility>
-#include <memory>
-#include <algorithm>
-#include <functional>
 #include <unordered_map>
 
 #include "rf_kernels/internals.hpp"
@@ -16,9 +11,6 @@ namespace rf_kernels {
 }; // pacify emacs c-mode
 #endif
 
-
-constexpr int upsample_weights_max_Df = 8;
-constexpr int upsample_weights_max_Dt = 8;
 
 // Usage: kernel(nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff, Df, Dt)
 using upsampling_kernel_t = void (*)(int, int, float *, int, const float *, int, float, int, int);
@@ -113,7 +105,7 @@ inline void _populate_global_kernel_table_2d()
 
 static void populate_global_kernel_table()
 {
-    _populate_global_kernel_table_2d<upsample_weights_max_Df, upsample_weights_max_Dt> ();
+    _populate_global_kernel_table_2d<8,8> ();
 }
 
 
