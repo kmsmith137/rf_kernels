@@ -52,7 +52,7 @@ void test_simd_upsample(std::mt19937 &rng)
 
 // -------------------------------------------------------------------------------------------------
 //
-// test_upsample
+// test_weight_upsample
 
 
 static void reference_weight_upsample(int nfreq_in, int nt_in, float *out, int ostride, const float *in, int istride, float w_cutoff, int Df, int Dt)
@@ -73,7 +73,7 @@ static void reference_weight_upsample(int nfreq_in, int nt_in, float *out, int o
 }
 
 
-static void test_upsample(std::mt19937 &rng, int nfreq_in, int nt_in, int ostride, int istride, float w_cutoff, int Df, int Dt)
+static void test_weight_upsample(std::mt19937 &rng, int nfreq_in, int nt_in, int ostride, int istride, float w_cutoff, int Df, int Dt)
 {
     vector<float> w_in(nfreq_in * istride);
     for (size_t i = 0; i < w_in. size(); i++)
@@ -94,7 +94,7 @@ static void test_upsample(std::mt19937 &rng, int nfreq_in, int nt_in, int ostrid
 }
 
 
-static void test_upsample(std::mt19937 &rng)
+static void test_weight_upsample(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
 	int Df = 1 << randint(rng, 0, 4);
@@ -105,10 +105,10 @@ static void test_upsample(std::mt19937 &rng)
 	int istride = randint(rng, nt_in, 2*nt_in);
 	float w_cutoff = max(0.0, uniform_rand(rng,-1.0,1.0));
 	
-	test_upsample(rng, nfreq_in, nt_in, ostride, istride, w_cutoff, Df, Dt);
+	test_weight_upsample(rng, nfreq_in, nt_in, ostride, istride, w_cutoff, Df, Dt);
     }
 
-    cout << "test_upsample: pass" << endl;
+    cout << "test_weight_upsample: pass" << endl;
 }
 
 
@@ -121,7 +121,7 @@ int main(int argc, char **argv)
     std::mt19937 rng(rd());
 
     test_simd_upsample(rng);
-    test_upsample(rng);
+    test_weight_upsample(rng);
 
     return 0;
 }
