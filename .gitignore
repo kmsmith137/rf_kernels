@@ -5,6 +5,7 @@
 Makefile.local
 unittest_touchfiles
 
+test-downsample
 test-online-mask-filler
 test-spline-detrender
 test-upsample

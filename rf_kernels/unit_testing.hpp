@@ -12,6 +12,7 @@
 #include <vector>
 #include <random>
 #include <cassert>
+#include <sstream>
 #include <iostream>
 #include <unistd.h>
 #include <sys/time.h>
@@ -103,6 +104,22 @@ inline float maxabs(const float *v, ssize_t n)
 inline float maxabs(const std::vector<float> &v)
 {
     return maxabs(&v[0], v.size());
+}
+
+// for debugging: returns string representation of a vector
+template<typename T> inline std::string vstr(const T *buf, int n)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (int i = 0; i < n; i++)
+	ss << " " << buf[i];
+    ss << " ]";
+    return ss.str();
+}
+
+template<typename T> inline std::string vstr(const std::vector<T> &buf)
+{
+    return vstr(&buf[0], buf.size());
 }
 
 

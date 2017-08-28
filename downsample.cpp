@@ -109,7 +109,7 @@ void wi_downsampler::downsample(int nfreq_out, int nt_out, float *out_i, float *
     if (_unlikely(nt_out <= 0))
 	throw runtime_error("rf_kernels::wi_downsampler: expected nt_out > 0");
     
-    if (_unlikely(nt_out % 8 == 0))
+    if (_unlikely(nt_out % 8))
 	throw runtime_error("rf_kernels::wi_downsampler: expected nt_out divisible by 8");
 
     if (_unlikely(abs(istride) < Dt * nt_out))

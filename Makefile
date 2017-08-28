@@ -26,8 +26,18 @@ OFILES = \
   spline_detrender.o \
   upsample.o
 
-TESTBINFILES = test-online-mask-filler test-spline-detrender test-upsample
-TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-polynomial-detrender time-spline-detrender time-upsample
+TESTBINFILES = \
+  test-downsample \
+  test-online-mask-filler \
+  test-spline-detrender \
+  test-upsample
+
+TIMEBINFILES = \
+  time-memory-access-patterns \
+  time-online-mask-filler \
+  time-polynomial-detrender \
+  time-spline-detrender \
+  time-upsample
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
 
@@ -95,6 +105,9 @@ upsample.o: upsample.cpp rf_kernels/internals.hpp rf_kernels/upsample.hpp rf_ker
 	$(CPP) -c -o $@ $<
 
 
+test-downsample.o: test-downsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+	$(CPP) -c -o $@ $<
+
 test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
@@ -104,6 +117,9 @@ test-spline-detrender.o: test-spline-detrender.cpp rf_kernels/internals.hpp rf_k
 test-upsample.o: test-upsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
 	$(CPP) -c -o $@ $<
 
+
+#time-downsample.o: time-downsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+#	$(CPP) -c -o $@ $<
 
 time-memory-access-patterns.o: time-memory-access-patterns.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
 	$(CPP) -c -o $@ $<
@@ -124,6 +140,9 @@ time-upsample.o: time-upsample.cpp rf_kernels/internals.hpp rf_kernels/unit_test
 librf_kernels.so: $(OFILES)
 	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^
 
+
+test-downsample: test-downsample.o downsample.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
