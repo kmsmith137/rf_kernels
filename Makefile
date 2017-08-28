@@ -19,7 +19,7 @@ OFILES = \
   polynomial_detrender.o \
   spline_detrender.o
 
-TESTBINFILES = test-online-mask-filler test-spline-detrender
+TESTBINFILES = test-online-mask-filler test-spline-detrender test-upsample
 TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-polynomial-detrender time-spline-detrender
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
@@ -81,11 +81,16 @@ spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spl
 unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
 	$(CPP) -c -o $@ $<
 
+
 test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
 test-spline-detrender.o: test-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
+
+test-upsample.o: test-upsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+	$(CPP) -c -o $@ $<
+
 
 time-memory-access-patterns.o: time-memory-access-patterns.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
 	$(CPP) -c -o $@ $<
@@ -103,11 +108,16 @@ time-spline-detrender.o: time-spline-detrender.cpp rf_kernels/internals.hpp rf_k
 librf_kernels.so: $(OFILES)
 	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^
 
+
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-spline-detrender: test-spline-detrender.o spline_detrender.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-upsample: test-upsample.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
 
 time-memory-access-patterns: time-memory-access-patterns.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
