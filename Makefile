@@ -69,6 +69,9 @@ unittest_touchfiles/ut_%: %
 ####################################################################################################
 
 
+downsample.o: downsample.cpp rf_kernels/internals.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+	$(CPP) -c -o $@ $<
+
 online_mask_filler.o: online_mask_filler.cpp rf_kernels/internals.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
