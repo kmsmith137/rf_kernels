@@ -23,7 +23,6 @@ TESTBINFILES = test-online-mask-filler test-spline-detrender
 TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-spline-detrender
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
-TIMING_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TIMEBINFILES))
 
 
 ####################################################################################################
@@ -47,8 +46,6 @@ endif
 all: librf_kernels.so $(TESTBINFILES) $(TIMEBINFILES)
 
 test: $(TESTBINFILES) $(UNITTEST_TOUCHFILES)
-
-timings: $(TIMEBINFILES) $(TIMING_TOUCHFILES)
 
 install: librf_kernels.so
 	mkdir -p $(INCDIR)/rf_kernels $(LIBDIR)/
