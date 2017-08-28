@@ -20,7 +20,7 @@ OFILES = \
   spline_detrender.o
 
 TESTBINFILES = test-online-mask-filler test-spline-detrender test-upsample
-TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-polynomial-detrender time-spline-detrender
+TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-polynomial-detrender time-spline-detrender time-upsample
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
 
@@ -107,6 +107,9 @@ time-polynomial-detrender.o: time-polynomial-detrender.cpp rf_kernels/internals.
 time-spline-detrender.o: time-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
+time-upsample.o: time-upsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+	$(CPP) -c -o $@ $<
+
 
 librf_kernels.so: $(OFILES)
 	$(CPP) $(CPP_LFLAGS) -shared -o $@ $^
@@ -132,4 +135,7 @@ time-spline-detrender: time-spline-detrender.o unit_testing.o spline_detrender.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-polynomial-detrender: time-polynomial-detrender.o unit_testing.o polynomial_detrender.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+time-upsample: time-upsample.o unit_testing.o upsample.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^

@@ -13,3 +13,4 @@ time-memory-access-patterns
 time-online-mask-filler
 time-polynomial-detrender
 time-spline-detrender
+time-upsample

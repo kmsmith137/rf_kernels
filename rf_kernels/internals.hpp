@@ -61,6 +61,23 @@ inline ssize_t _align(ssize_t nbytes, ssize_t nalign=128)
     return ((nbytes + nalign - 1) / nalign) * nalign;
 }
 
+// Returns (m/n), in a situation where we want to assert that n evenly divides m.
+inline ssize_t xdiv(ssize_t m, ssize_t n)
+{
+    rf_assert(m >= 0);
+    rf_assert(n > 0);
+    rf_assert(m % n == 0);
+    return m / n;
+}
+
+// Returns (m % n), in a situation where we want to assert that the % operation makes sense
+inline ssize_t xmod(ssize_t m, ssize_t n)
+{
+    rf_assert(m >= 0);
+    rf_assert(n > 0);
+    return m % n;
+}
+
 
 }  // namespace rf_kernels
 
