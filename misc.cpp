@@ -29,4 +29,17 @@ string axis_type_to_string(axis_type axis)
 }
 
 
+axis_type axis_type_from_string(const string &s, const char *where)
+{
+    if (s == "AXIS_FREQ")
+	return AXIS_FREQ;
+    if (s == "AXIS_TIME")
+	return AXIS_TIME;
+    if (s == "AXIS_NONE")
+	return AXIS_NONE;
+
+    throw runtime_error("rf_kernels: " + string(where) + " '" + s + "' is not an axis_type as expected");
+}
+
+
 }  // namespace rf_kernels
