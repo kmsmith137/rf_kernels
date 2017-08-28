@@ -86,23 +86,33 @@ inline ssize_t xmod(ssize_t m, ssize_t n)
 // Hmm, the C++11 standard library doesn't define hash functions for 
 // composite types such as pair<S,T> or array<T,N>.
 //
-// FIXME: I may want to generalize from array<T,2> to array<T,N> some day.
 // FIXME: Is it kosher to add hash<> specializations to the std:: namespace?
 
 namespace std {
-    template<typename T>
-    struct hash<array<T,2>>
+    template<size_t N, typename H, typename T, typename enable_if<(N==1),int>::type = 0>
+    inline size_t kms_hash(const H &h, const T &t)
     {
-	inline size_t operator()(const array<T,2> &v) const
+	return h(t[0]);
+    }
+    
+    template<size_t N, typename H, typename T, typename enable_if<(N>1),int>::type = 0>
+    inline size_t kms_hash(const H &h, const T &t)
+    {
+	size_t h0 = kms_hash<N-1> (h,t);
+	size_t h1 = h(t[N-1]);
+
+	// from boost::hash_combine()
+	h0 ^= (h1 + 0x9e3779b9 + (h0 << 6) + (h0 >> 2));
+	return h0;
+    }
+
+    template<typename T, size_t N>
+    struct hash<array<T,N>>
+    {
+	inline size_t operator()(const array<T,N> &v) const
 	{
 	    hash<T> h;
-	    size_t h0 = h(v[0]);
-	    size_t h1 = h(v[1]);
-
-	    // from boost::hash_combine()
-	    h0 ^= (h1 + 0x9e3779b9 + (h0 << 6) + (h0 >> 2));
-
-	    return h0;
+	    return kms_hash<N> (h,v);
 	}
     };
 }
