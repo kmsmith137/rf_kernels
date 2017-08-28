@@ -21,9 +21,7 @@ using upsampling_kernel_t = void (*)(int, int, float *, int, const float *, int,
 // global kernel table
 
 
-static unordered_map<array<int,2>, upsampling_kernel_t>  global_kernel_table_Df_Dt;   // (Df,Dt) -> kernel
-static unordered_map<int, upsampling_kernel_t>           global_kernel_table_Df;      // (Df) -> kernel
-static unordered_map<int, upsampling_kernel_t>           global_kernel_table_Dt;      // (Dt) -> kernel
+static unordered_map<array<int,2>, upsampling_kernel_t> global_kernel_table;   // (Df,Dt) -> kernel
 
 
 inline void _bad_Df_Dt(int Df, int Dt)
@@ -34,84 +32,83 @@ inline void _bad_Df_Dt(int Df, int Dt)
 }
 
 
-template<typename T>
-inline upsampling_kernel_t _get_kernel(const unordered_map<T,upsampling_kernel_t> &t, const T &key, int Df, int Dt)
+inline upsampling_kernel_t get_kernel(int Df, int Dt)
 {
-    auto p = t.find(key);
-    if (_unlikely(p == t.end()))
+    if (Df > 8) {
+	if (_unlikely(Df % 8 != 0))
+	    _bad_Df_Dt(Df,Dt);
+	Df = 16;
+    }
+
+    if (Dt > 8) {
+	if (_unlikely(Dt % 8 != 0))
+	    _bad_Df_Dt(Df,Dt);
+	Dt = 16;
+    }
+
+    auto p = global_kernel_table.find({Df,Dt});
+    
+    if (_unlikely(p == global_kernel_table.end()))
 	_bad_Df_Dt(Df, Dt);
 
     return p->second;
 }
 
 
-inline upsampling_kernel_t get_kernel(int Df, int Dt)
+// -------------------------------------------------------------------------------------------------
+//
+// Populating global kernel table
+
+
+template<int Df, int Dt> struct kernel
 {
-    if (Df > 8) {
-	if (_unlikely(Df % 8 != 0))
-	    _bad_Df_Dt(Df,Dt);
-	if (Dt <= 8)
-	    return _get_kernel(global_kernel_table_Dt, Dt, Df, Dt);
-	if (_unlikely(Dt % 8 != 0))
-	    _bad_Df_Dt(Df,Dt);
-	return kernel_upsample_weights;
-    }
+    static upsampling_kernel_t get() { return kernel_upsample_weights_Df_Dt<Df,Dt>; }
+};
 
-    if (Dt > 8) {
-	if (_unlikely(Dt % 8 != 0))
-	    _bad_Df_Dt(Df,Dt);
-	return _get_kernel(global_kernel_table_Df, Df, Df, Dt);
-    }
-		
-    array<int,2> key{{ Df, Dt }};
-    return _get_kernel(global_kernel_table_Df_Dt, key, Df, Dt);
-}
-
-
-template<int Df, int DtMax, typename enable_if<(DtMax==0),int>::type=0>
-inline void _populate_global_kernel_table_1d()
+template<int Df> struct kernel<Df,16>
 {
-    global_kernel_table_Df[Df] = kernel_upsample_weights_Df<Df>;
-}
+    static upsampling_kernel_t get() { return kernel_upsample_weights_Df<Df>; }
+};
 
-template<int Df, int DtMax, typename enable_if<(DtMax>0),int>::type=0>
-inline void _populate_global_kernel_table_1d()
+template<int Dt> struct kernel<16,Dt>
 {
-    _populate_global_kernel_table_1d<Df,(DtMax/2)> ();
+    static upsampling_kernel_t get() { return kernel_upsample_weights_Dt<Dt>; }
+};
 
-    array<int,2> key{{Df,DtMax}};
-    global_kernel_table_Df_Dt[key] = kernel_upsample_weights_Df_Dt<Df,DtMax>;
-}
+template<> struct kernel<16,16>
+{
+    static upsampling_kernel_t get() { return kernel_upsample_weights; }
+};
 
 
-template<int DfMax, int DtMax, typename enable_if<(DfMax==0 && DtMax==0),int>::type=0>
-inline void _populate_global_kernel_table_2d()
+template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
+inline void _populate_global_kernel_table1()
 { }
 
-template<int DfMax, int DtMax, typename enable_if<(DfMax==0 && DtMax>0),int>::type=0>
-inline void _populate_global_kernel_table_2d()
+template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
+inline void _populate_global_kernel_table1()
 {
-    _populate_global_kernel_table_2d<0,(DtMax/2)> ();
-    global_kernel_table_Dt[DtMax] = kernel_upsample_weights_Dt<DtMax>;
-}
-
-template<int DfMax, int DtMax, typename enable_if<(DfMax>0),int>::type=0>
-inline void _populate_global_kernel_table_2d()
-{
-    _populate_global_kernel_table_2d<(DfMax/2),DtMax> ();
-    _populate_global_kernel_table_1d<DfMax,DtMax> ();    
+    _populate_global_kernel_table1<Df,(Dt/2)> ();
+    global_kernel_table[{Df,Dt}] = kernel<Df,Dt>::get();
 }
 
 
-static void populate_global_kernel_table()
+template<int Df, int Dt, typename enable_if<(Df==0),int>::type=0>
+inline void _populate_global_kernel_table2()
+{ }
+
+// Called for (Df,Dt)=(*,8).
+template<int Df, int Dt, typename enable_if<(Df>0),int>::type=0>
+inline void _populate_global_kernel_table2()
 {
-    _populate_global_kernel_table_2d<8,8> ();
+    _populate_global_kernel_table2<(Df/2),Dt> ();
+    _populate_global_kernel_table1<Df,Dt> ();
 }
 
 
 namespace {
     struct X {
-	X() { populate_global_kernel_table(); }
+	X() { _populate_global_kernel_table2<16,16>(); }
     } x;
 }
 
