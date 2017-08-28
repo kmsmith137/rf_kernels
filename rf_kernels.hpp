@@ -7,6 +7,7 @@
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
 
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/upsample.hpp"
 #include "rf_kernels/downsample.hpp"
 #include "rf_kernels/xorshift_plus.hpp"

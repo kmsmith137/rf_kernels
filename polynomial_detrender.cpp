@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/polynomial_detrender.hpp"
 #include "rf_kernels/polynomial_detrender_internals.hpp"
@@ -37,6 +38,8 @@ using detrending_kernel_t = void (*)(int, int, float *, float *, int, double);
 // _fill_detrending_kernel_table<S,N>(): fills shape (N,2) array with kernels.
 // The outer index is a polynomial degree 0 <= polydeg < N, and the inner index is the axis.
 
+static_assert(AXIS_FREQ==0, "This implementation assumes AXIS_FREQ==0");
+static_assert(AXIS_TIME==1, "This implementation assumes AXIS_TIME==1");                                          
 
 template<int S, int N, typename std::enable_if<(N==0),int>::type = 0>
 inline void fill_detrending_kernel_table(detrending_kernel_t *out) { }
@@ -60,10 +63,9 @@ struct detrending_kernel_table {
 	fill_detrending_kernel_table<Sfid,MaxDeg+1> (&entries[0]);
     }
 
-    // Reminder: the 'axis' argument should be 0 to fit along the frequency axis, or 1 to fit along the time axis.
-    inline detrending_kernel_t get_kernel(int axis, int polydeg)
+    inline detrending_kernel_t get_kernel(axis_type axis, int polydeg)
     {
-	if (_unlikely((axis < 0) || (axis > 1)))
+	if (_unlikely((axis != AXIS_FREQ) && (axis != AXIS_TIME)))
 	    throw runtime_error("rf_kernels::polynomial_detrender: axis=" + to_string(axis) + " is not defined for this transform");
 
 	if (_unlikely(polydeg < 0))
@@ -83,7 +85,7 @@ static detrending_kernel_table global_detrending_kernel_table;
 // -------------------------------------------------------------------------------------------------
 
 
-polynomial_detrender::polynomial_detrender(int axis_, int polydeg_) :
+polynomial_detrender::polynomial_detrender(axis_type axis_, int polydeg_) :
     axis(axis_),
     polydeg(polydeg_),
     _f(global_detrending_kernel_table.get_kernel(axis_, polydeg_))

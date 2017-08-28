@@ -5,6 +5,9 @@
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
 
+// enum axis_type
+#include "core.hpp"
+
 namespace rf_kernels {
 #if 0
 }; // pacify emacs c-mode
@@ -12,12 +15,13 @@ namespace rf_kernels {
 
 
 struct polynomial_detrender {
-    const int axis;
+    const axis_type axis;
     const int polydeg;
     
     // The constructor will automatically initialize the low-level kernel (_detrend).
-    // The 'axis' argument should be 0 to fit along the frequency axis, or 1 to fit along the time axis.
-    polynomial_detrender(int axis, int polydeg);
+    // The 'axis' argument should either be AXIS_FREQ or AXIS_TIME.
+    // (Note: 'enum axis_type' is defined in rf_kernels/core.hpp)
+    polynomial_detrender(axis_type axis, int polydeg);
 
     // Note that the weights are not 'const' (in constrast to spline_detrender).
     // This is because the polynomial_detrender masks regions where the fit is poorly conditioned.

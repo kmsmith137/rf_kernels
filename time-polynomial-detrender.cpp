@@ -18,7 +18,7 @@ struct polynomial_detrender_timing_thread : public kernel_timing_thread {
 	this->allocate();
 
 	for (int polydeg: { 1, 2, 3, 4, 6, 8 }) {
-	    for (int axis = 0; axis < 2; axis++) {
+	    for (axis_type axis: { AXIS_FREQ, AXIS_TIME }) {
 		stringstream ss;
 		ss << "polynomial_detrender(axis=" << axis << ",polydeg=" << polydeg << ")";
 
