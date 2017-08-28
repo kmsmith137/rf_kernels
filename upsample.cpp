@@ -30,7 +30,8 @@ using upsampling_kernel_t = void (*)(int, int, float *, int, const float *, int,
 
 
 static unordered_map<array<int,2>, upsampling_kernel_t>  global_kernel_table_Df_Dt;   // (Df,Dt) -> kernel
-static unordered_map<int, upsampling_kernel_t>           global_kernel_table_Dt;      // Dt -> kernel
+static unordered_map<int, upsampling_kernel_t>           global_kernel_table_Df;      // (Df) -> kernel
+static unordered_map<int, upsampling_kernel_t>           global_kernel_table_Dt;      // (Dt) -> kernel
 
 
 inline void _bad_Df_Dt(int Df, int Dt)
@@ -57,7 +58,17 @@ inline upsampling_kernel_t get_kernel(int Df, int Dt)
     if (Df > 8) {
 	if (_unlikely(Df % 8 != 0))
 	    _bad_Df_Dt(Df,Dt);
-	return _get_kernel(global_kernel_table_Dt, Dt, Df, Dt);
+	if (Dt <= 8)
+	    return _get_kernel(global_kernel_table_Dt, Dt, Df, Dt);
+	if (_unlikely(Dt % 8 != 0))
+	    _bad_Df_Dt(Df,Dt);
+	return kernel_upsample_weights;
+    }
+
+    if (Dt > 8) {
+	if (_unlikely(Dt % 8 != 0))
+	    _bad_Df_Dt(Df,Dt);
+	return _get_kernel(global_kernel_table_Df, Df, Df, Dt);
     }
 		
     array<int,2> key{{ Df, Dt }};
@@ -67,7 +78,9 @@ inline upsampling_kernel_t get_kernel(int Df, int Dt)
 
 template<int Df, int DtMax, typename enable_if<(DtMax==0),int>::type=0>
 inline void _populate_global_kernel_table_1d()
-{ }
+{
+    global_kernel_table_Df[Df] = kernel_upsample_weights_Df<Df>;
+}
 
 template<int Df, int DtMax, typename enable_if<(DtMax>0),int>::type=0>
 inline void _populate_global_kernel_table_1d()

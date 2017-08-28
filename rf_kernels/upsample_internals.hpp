@@ -140,51 +140,125 @@ inline simd_ntuple<float,8,Dt> simd_upsample(const simd_t<float,8> &t)
 
 // -------------------------------------------------------------------------------------------------
 //
-// upsample_and_mask<Df,Dt>()
+// _upsample_weights_0a<Df> (float *wp, __m256 mask, int stride)
+// _upsample_weights_0a<Df> (float *wp, __m256 mask, int stride, int N)
+//
+// These apply the mask to a shape-(Df,S) and shape-(Df,N) array respectively.
+// In the latter case, N must be divisible by the simd size S!
 
 
-// upsample_and_mask1(): applies mask to shape-(Df,S) array.
+// _upsample_weights_0d1(): applies mask to shape-(Df,S) array.
 template<int Df, typename std::enable_if<(Df==0),int>::type = 0>
-inline void _upsample_and_mask1(float *wp, __m256 mask, int stride)
+inline void _upsample_weights_0a(float *wp, __m256 mask, int stride)
 { }
 
 template<int Df, typename std::enable_if<(Df>0),int>::type = 0>
-inline void _upsample_and_mask1(float *wp, __m256 mask, int stride)
+inline void _upsample_weights_0a(float *wp, __m256 mask, int stride)
 {
-    _upsample_and_mask1<Df-1> (wp, mask, stride);
+    _upsample_weights_0a<Df-1> (wp, mask, stride);
 
     float *p = wp + (Df-1)*stride;
     _mm256_storeu_ps(p, _mm256_and_ps(mask, _mm256_loadu_ps(p)));
 }
 
-
-// upsample_and_mask2(): applies mask to shape-(Df,P*S) array.
-template<int Df, int Dt, int P=Dt, typename std::enable_if<(P==0),int>::type = 0>
-inline void _upsample_and_mask2(float *wp, const simd_upsampler<Dt> &mask, int stride)
-{ }
-
-template<int Df, int Dt, int P=Dt, typename std::enable_if<(P>0),int>::type = 0>
-inline void _upsample_and_mask2(float *wp, const simd_upsampler<Dt> &mask, int stride)
-{   
-    constexpr int Q = (P-1)*8;
-    _upsample_and_mask2<Df,Dt,P-1> (wp, mask, stride);
-    _upsample_and_mask1<Df> (wp+Q, mask.template get<P-1>(), stride);
+template<int Df, typename std::enable_if<(Df>0),int>::type = 0>
+inline void _upsample_weights_0a(float *wp, __m256 mask, int stride, int N)
+{
+    for (int i = 0; i < N; i += 8)
+	_upsample_weights_0a<Df> (wp+i, mask, stride);
 }
 
 
-// upsample_and_mask(): applies mask to shape-(Df,Dt*S) array.
-template<int Df, int Dt>
-inline void upsample_and_mask(float *wp, __m256 mask, int stride)
+// ------------------------------------------------------------------------------------------------
+//
+// _upsample_weights_0b<Df,Dt,P> (float *p, const simd_upsampler<Dt> &mask, int stride)
+// _upsample_weights_0b<Df,P> (float *p, const simd_upsampler<S> &mask, int stride, int Dt)
+//
+// These apply the mask to a shape-(Df,Dt*S) array.
+
+
+template<int Df, int Dt, int P, typename std::enable_if<(P==0),int>::type = 0>
+inline void _upsample_weights_0b(float *wp, const simd_upsampler<Dt> &mask, int stride)
+{ }
+
+template<int Df, int Dt, int P, typename std::enable_if<(P>0),int>::type = 0>
+inline void _upsample_weights_0b(float *wp, const simd_upsampler<Dt> &mask, int stride)
+{   
+    constexpr int Q = (P-1)*8;
+    _upsample_weights_0b<Df,Dt,P-1> (wp, mask, stride);
+    _upsample_weights_0a<Df> (wp+Q, mask.template get<P-1>(), stride);
+}
+
+template<int Df, int P, typename std::enable_if<(P==0),int>::type = 0>
+inline void _upsample_weights_0b(float *wp, const simd_upsampler<8> &mask, int stride, int Dt)
+{ }
+
+template<int Df, int P, typename std::enable_if<(P>0),int>::type = 0>
+inline void _upsample_weights_0b(float *wp, const simd_upsampler<8> &mask, int stride, int Dt)
 {
-    simd_upsampler<Dt> u(mask);
-    _upsample_and_mask2<Df,Dt> (wp, u, stride);
+    _upsample_weights_0b<Df,P-1> (wp, mask, stride, Dt);
+    _upsample_weights_0a<Df> (wp+(P-1)*Dt, mask.template get<P-1>(), stride, Dt);
 }
 
 
 // -------------------------------------------------------------------------------------------------
+//
+// _upsample_weights_0d<Df,Dt> (float *p, __m256 mask, int stride)
+// _upsample_weights_0d<Df> (float *p, __m256 mask, int stride, int Dt)
+//
+// These apply the mask to a shape-(Df,Dt*S) array.
+
+template<int Df, int Dt>
+inline void _upsample_weights_0d(float *wp, __m256 mask, int stride)
+{
+    _upsample_weights_0b<Df,Dt,Dt> (wp, simd_upsampler<Dt>(mask), stride);
+}
+
+template<int Df>
+inline void _upsample_weights_0d(float *wp, __m256 mask, int stride, int Dt)
+{
+    _upsample_weights_0b<Df,8> (wp, simd_upsampler<8>(mask), stride, Dt);
+}
 
 
+// -------------------------------------------------------------------------------------------------
+//
+// _upsample_weights_1d<Df,Dt> (int nt_in, float *out, int ostride, const float *in, __m256 w_cutoff)
+// _upsample_weights_1d<Df>    (int nt_in, float *out, int ostride, const float *in, __m256 w_cutoff, int Dt)
+//
+// These operate on an 1D input array of length nt_in, and an output array of shape (Df,Dt*nt_in).
+// In the first case, Dt is a compile-time parameter, and in the second case it is a runtime parameter
+// In the second case, Dt must be divisible by the simd size S=8!
+//
+// Caller must check that nt_in is divisible by the simd_size S=8.
+
+
+template<int Df, int Dt>
+inline void _upsample_weights_1d(int nt_in, float *out, int ostride, const float *in, __m256 w_cutoff)
+{
+    for (int it = 0; it < nt_in; it += 8) {
+	__m256 w = _mm256_loadu_ps(in+it);
+	__m256 mask = _mm256_cmp_ps(w, w_cutoff, _CMP_GT_OQ);
+	_upsample_weights_0d<Df,Dt> (out+it*Dt, mask, ostride);
+    }
+}
+
+template<int Df>
+inline void _upsample_weights_1d(int nt_in, float *out, int ostride, const float *in, __m256 w_cutoff, int Dt)
+{
+    for (int it = 0; it < nt_in; it += 8) {
+	__m256 w = _mm256_loadu_ps(in+it);
+	__m256 mask = _mm256_cmp_ps(w, w_cutoff, _CMP_GT_OQ);
+	_upsample_weights_0d<Df> (out+it*Dt, mask, ostride, Dt);
+    }
+}
+
+
+// -------------------------------------------------------------------------------------------------
+//
 // kernel_upsample_weights_Df_Dt()
+// kernel_upsample_weights_Df()
+// kernel_upsample_weights_Dt()
 //
 // Caller must check all arguments, including these checks:
 //   (nt_in % 8) == 0
@@ -193,50 +267,46 @@ inline void upsample_and_mask(float *wp, __m256 mask, int stride)
 //
 // The (Df_, Dt_) arguments are superfluous!
 
+
 template<int Df, int Dt>
 inline void kernel_upsample_weights_Df_Dt(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df_, int Dt_)
 {
     __m256 w_cutoff = _mm256_set1_ps(w_cutoff_);
 
-    for (int ifreq = 0; ifreq < nfreq_in; ifreq++) {
-	float *dst2 = dst + ifreq * Df * dstride;
-	const float *src2 = src + ifreq * sstride;
-
-	for (int it = 0; it < nt_in; it += 8) {
-	    __m256 w = _mm256_loadu_ps(src2+it);
-	    __m256 mask = _mm256_cmp_ps(w, w_cutoff, _CMP_GT_OQ);
-	    upsample_and_mask<Df,Dt> (dst2 + it*Dt, mask, dstride);
-	}
-    }
+    for (int ifreq = 0; ifreq < nfreq_in; ifreq++)
+	_upsample_weights_1d<Df,Dt> (nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff);
 }
 
 
-// kernel_upsample_weights_Df()
-//
-// Caller must check all arguments, including these checks:
-//   (nt_in % 8) == 0
-//   Df % 8 == 0
-//   Dt == Dt_
-//
-// The Dt_ argument is superfluous!
+template<int Df>
+inline void kernel_upsample_weights_Df(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df_, int Dt)
+{
+    __m256 w_cutoff = _mm256_set1_ps(w_cutoff_);
+
+    for (int ifreq = 0; ifreq < nfreq_in; ifreq++)
+	_upsample_weights_1d<Df> (nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff, Dt);
+}
+
 
 template<int Dt>
 inline void kernel_upsample_weights_Dt(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df, int Dt_)
 {
     __m256 w_cutoff = _mm256_set1_ps(w_cutoff_);
 
-    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++) {
-	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += 8) {
-	    float *dst2 = dst + ifreq_out * dstride;
-	    const float *src2 = src + ifreq_in * sstride;
-	    
-	    for (int it = 0; it < nt_in; it += 8) {
-		__m256 w = _mm256_loadu_ps(src2+it);
-		__m256 mask = _mm256_cmp_ps(w, w_cutoff, _CMP_GT_OQ);
-		upsample_and_mask<8,Dt> (dst2 + it*Dt, mask, dstride);
-	    }
-	}
-    }
+    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++)
+	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += 8)
+	    _upsample_weights_1d<8,Dt> (nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff);
+}
+
+
+// Not a template
+inline void kernel_upsample_weights(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df, int Dt)
+{
+    __m256 w_cutoff = _mm256_set1_ps(w_cutoff_);
+
+    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++)
+	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += 8)
+	    _upsample_weights_1d<8> (nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff, Dt);
 }
 
 

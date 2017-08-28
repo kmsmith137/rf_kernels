@@ -17,8 +17,8 @@ struct upsample_timing_thread : public kernel_timing_thread {
     {
 	this->allocate();
 
-	for (int Df: { 1, 2, 4, 8 }) {
-	    for (int Dt: { 1, 2, 4, 8 }) {
+	for (int Df: { 1, 2, 4, 8, 16 }) {
+	    for (int Dt: { 1, 2, 4, 8, 16 }) {
 		stringstream ss;
 		ss << "weight_upsampler(Df=" << Df << ",Dt=" << Dt << ")";
 
