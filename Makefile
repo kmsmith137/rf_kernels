@@ -5,19 +5,26 @@
 
 
 # Note that INCFILES are in the rf_kernels/ subdirectory
-INCFILES = internals.hpp \
+INCFILES = \
+  internals.hpp \
+  downsample.hpp \
+  downsample_internals.hpp \
   online_mask_filler.hpp \
   polynomial_detrender.hpp \
   polynomial_detrender_internals.hpp \
   spline_detrender.hpp \
   spline_detrender_internals.hpp \
   unit_testing.hpp \
+  upsample.hpp \
+  upsample_internals.hpp \
   xorshift_plus.hpp 
 
 OFILES = \
+  downsample.o \
   online_mask_filler.o \
   polynomial_detrender.o \
-  spline_detrender.o
+  spline_detrender.o \
+  upsample.o
 
 TESTBINFILES = test-online-mask-filler test-spline-detrender test-upsample
 TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-polynomial-detrender time-spline-detrender time-upsample
