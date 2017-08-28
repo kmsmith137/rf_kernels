@@ -7,12 +7,17 @@
 # Note that INCFILES are in the rf_kernels/ subdirectory
 INCFILES = internals.hpp \
   online_mask_filler.hpp \
+  polynomial_detrender.hpp \
+  polynomial_detrender_internals.hpp \
   spline_detrender.hpp \
   spline_detrender_internals.hpp \
   unit_testing.hpp \
   xorshift_plus.hpp 
 
-OFILES = online_mask_filler.o spline_detrender.o
+OFILES = \
+  online_mask_filler.o \
+  polynomial_detrender.o \
+  spline_detrender.o
 
 TESTBINFILES = test-online-mask-filler test-spline-detrender
 TIMEBINFILES = time-memory-access-patterns time-online-mask-filler time-spline-detrender
@@ -68,6 +73,9 @@ unittest_touchfiles/ut_%: %
 
 
 online_mask_filler.o: online_mask_filler.cpp rf_kernels/internals.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+	$(CPP) -c -o $@ $<
+
+polynomial_detrender.o: polynomial_detrender.cpp rf_kernels/internals.hpp rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
 spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
