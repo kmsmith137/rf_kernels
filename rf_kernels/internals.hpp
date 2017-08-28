@@ -64,4 +64,30 @@ inline ssize_t _align(ssize_t nbytes, ssize_t nalign=128)
 
 }  // namespace rf_kernels
 
+
+// Hmm, the C++11 standard library doesn't define hash functions for 
+// composite types such as pair<S,T> or array<T,N>.
+//
+// FIXME: I may want to generalize from array<T,2> to array<T,N> some day.
+// FIXME: Is it kosher to add hash<> specializations to the std:: namespace?
+
+namespace std {
+    template<typename T>
+    struct hash<array<T,2>>
+    {
+	inline size_t operator()(const array<T,2> &v) const
+	{
+	    hash<T> h;
+	    size_t h0 = h(v[0]);
+	    size_t h1 = h(v[1]);
+
+	    // from boost::hash_combine()
+	    h0 ^= (h1 + 0x9e3779b9 + (h0 << 6) + (h0 >> 2));
+
+	    return h0;
+	}
+    };
+}
+
+
 #endif  // _RF_KERNELS_INTERNALS_HPP

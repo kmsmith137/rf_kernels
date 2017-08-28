@@ -81,6 +81,9 @@ spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spl
 unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
 	$(CPP) -c -o $@ $<
 
+upsample.o: upsample.cpp rf_kernels/internals.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+	$(CPP) -c -o $@ $<
+
 
 test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
@@ -115,7 +118,7 @@ test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
 test-spline-detrender: test-spline-detrender.o spline_detrender.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
-test-upsample: test-upsample.o
+test-upsample: test-upsample.o upsample.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 
