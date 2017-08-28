@@ -7,6 +7,8 @@ unittest_touchfiles
 
 test-online-mask-filler
 test-spline-detrender
+
 time-memory-access-patterns
 time-online-mask-filler
+time-polynomial-detrender
 time-spline-detrender

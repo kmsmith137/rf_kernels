@@ -483,6 +483,11 @@ void kernel_timing_thread::allocate()
 	intensity = aligned_alloc<float> (nfreq * stride);
     if (!weights)
 	weights = aligned_alloc<float> (nfreq * stride);
+
+    for (int i = 0; i < nfreq*stride; i++)
+	weights[i] = 1.0;
+
+    // intensities will be zero, since aligned_alloc() zeroes the buffer.
 }
 
 

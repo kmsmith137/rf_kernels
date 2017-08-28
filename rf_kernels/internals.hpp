@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
 #include <stdexcept>
 
 #ifndef _RF_KERNELS_INTERNALS_HPP
