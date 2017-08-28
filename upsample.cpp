@@ -29,21 +29,41 @@ using upsampling_kernel_t = void (*)(int, int, float *, int, const float *, int,
 // global kernel table
 
 
-static unordered_map<array<int,2>, upsampling_kernel_t> global_kernel_table;
+static unordered_map<array<int,2>, upsampling_kernel_t>  global_kernel_table_Df_Dt;   // (Df,Dt) -> kernel
+static unordered_map<int, upsampling_kernel_t>           global_kernel_table_Dt;      // Dt -> kernel
 
-inline upsampling_kernel_t get_kernel(int Df, int Dt)
+
+inline void _bad_Df_Dt(int Df, int Dt)
 {
-    array<int,2> key{{ Df, Dt }};
-    auto p = global_kernel_table.find(key);
+    stringstream ss;
+    ss << "rf_kernels::weighted_upsampler: (Df,Dt)=(" << Df << "," << Dt << ") is not supported";
+    throw runtime_error(ss.str());
+}
 
-    if (_unlikely(p == global_kernel_table.end())) {
-	stringstream ss;
-	ss << "rf_kernels::weighted_upsampler: (Df,Dt)=(" << Df << "," << Dt << ") is not supported";
-	throw runtime_error(ss.str());
-    }
+
+template<typename T>
+inline upsampling_kernel_t _get_kernel(const unordered_map<T,upsampling_kernel_t> &t, const T &key, int Df, int Dt)
+{
+    auto p = t.find(key);
+    if (_unlikely(p == t.end()))
+	_bad_Df_Dt(Df, Dt);
 
     return p->second;
 }
+
+
+inline upsampling_kernel_t get_kernel(int Df, int Dt)
+{
+    if (Df > 8) {
+	if (_unlikely(Df % 8 != 0))
+	    _bad_Df_Dt(Df,Dt);
+	return _get_kernel(global_kernel_table_Dt, Dt, Df, Dt);
+    }
+		
+    array<int,2> key{{ Df, Dt }};
+    return _get_kernel(global_kernel_table_Df_Dt, key, Df, Dt);
+}
+
 
 template<int Df, int DtMax, typename enable_if<(DtMax==0),int>::type=0>
 inline void _populate_global_kernel_table_1d()
@@ -55,13 +75,20 @@ inline void _populate_global_kernel_table_1d()
     _populate_global_kernel_table_1d<Df,(DtMax/2)> ();
 
     array<int,2> key{{Df,DtMax}};
-    global_kernel_table[key] = kernel_update_weights_Df_Dt<Df,DtMax>;
+    global_kernel_table_Df_Dt[key] = kernel_upsample_weights_Df_Dt<Df,DtMax>;
 }
 
 
-template<int DfMax, int DtMax, typename enable_if<(DfMax==0),int>::type=0>
+template<int DfMax, int DtMax, typename enable_if<(DfMax==0 && DtMax==0),int>::type=0>
 inline void _populate_global_kernel_table_2d()
 { }
+
+template<int DfMax, int DtMax, typename enable_if<(DfMax==0 && DtMax>0),int>::type=0>
+inline void _populate_global_kernel_table_2d()
+{
+    _populate_global_kernel_table_2d<0,(DtMax/2)> ();
+    global_kernel_table_Dt[DtMax] = kernel_upsample_weights_Dt<DtMax>;
+}
 
 template<int DfMax, int DtMax, typename enable_if<(DfMax>0),int>::type=0>
 inline void _populate_global_kernel_table_2d()

@@ -115,6 +115,7 @@ template<> inline __m256 simd_upsampler<8>::get<7> () const { return _mm256_perm
 //
 // Eventually, this code can be generalized to a pair <T,S> and moved to simd_helpers.
 
+
 template<int P, int Dt, typename std::enable_if<(P==0),int>::type = 0>
 inline void _partial_upsample(simd_ntuple<float,8,P> &dst, const simd_upsampler<Dt> &src)
 { }
@@ -181,6 +182,9 @@ inline void upsample_and_mask(float *wp, __m256 mask, int stride)
 
 
 // -------------------------------------------------------------------------------------------------
+
+
+// kernel_upsample_weights_Df_Dt()
 //
 // Caller must check all arguments, including these checks:
 //   (nt_in % 8) == 0
@@ -189,9 +193,8 @@ inline void upsample_and_mask(float *wp, __m256 mask, int stride)
 //
 // The (Df_, Dt_) arguments are superfluous!
 
-
 template<int Df, int Dt>
-inline void kernel_update_weights_Df_Dt(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df_, int Dt_)
+inline void kernel_upsample_weights_Df_Dt(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df_, int Dt_)
 {
     __m256 w_cutoff = _mm256_set1_ps(w_cutoff_);
 
@@ -203,6 +206,35 @@ inline void kernel_update_weights_Df_Dt(int nfreq_in, int nt_in, float *dst, int
 	    __m256 w = _mm256_loadu_ps(src2+it);
 	    __m256 mask = _mm256_cmp_ps(w, w_cutoff, _CMP_GT_OQ);
 	    upsample_and_mask<Df,Dt> (dst2 + it*Dt, mask, dstride);
+	}
+    }
+}
+
+
+// kernel_upsample_weights_Df()
+//
+// Caller must check all arguments, including these checks:
+//   (nt_in % 8) == 0
+//   Df % 8 == 0
+//   Dt == Dt_
+//
+// The Dt_ argument is superfluous!
+
+template<int Dt>
+inline void kernel_upsample_weights_Dt(int nfreq_in, int nt_in, float *dst, int dstride, const float *src, int sstride, float w_cutoff_, int Df, int Dt_)
+{
+    __m256 w_cutoff = _mm256_set1_ps(w_cutoff_);
+
+    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++) {
+	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += 8) {
+	    float *dst2 = dst + ifreq_out * dstride;
+	    const float *src2 = src + ifreq_in * sstride;
+	    
+	    for (int it = 0; it < nt_in; it += 8) {
+		__m256 w = _mm256_loadu_ps(src2+it);
+		__m256 mask = _mm256_cmp_ps(w, w_cutoff, _CMP_GT_OQ);
+		upsample_and_mask<8,Dt> (dst2 + it*Dt, mask, dstride);
+	    }
 	}
     }
 }

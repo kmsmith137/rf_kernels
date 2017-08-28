@@ -97,7 +97,7 @@ static void test_weight_upsample(std::mt19937 &rng, int nfreq_in, int nt_in, int
 static void test_weight_upsample(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
-	int Df = 1 << randint(rng, 0, 4);
+	int Df = 1 << randint(rng, 0, 7);
 	int Dt = 1 << randint(rng, 0, 4);
 	int nfreq_in = randint(rng, 1, 17);
 	int nt_in = 8 * randint(rng, 1, 17);
