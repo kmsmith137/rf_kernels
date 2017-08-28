@@ -15,10 +15,6 @@ struct polynomial_detrender {
     const int axis;
     const int polydeg;
     
-    // Function pointer to low-level kernel
-    // Usage: _detrend(nfreq, nt, intensity, weights, stride, epsilon)    
-    void (*_detrend)(int, int, float *, float *, int, double);
-
     // The constructor will automatically initialize the low-level kernel (_detrend).
     // The 'axis' argument should be 0 to fit along the frequency axis, or 1 to fit along the time axis.
     polynomial_detrender(int axis, int polydeg);
