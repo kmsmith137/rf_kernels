@@ -18,6 +18,8 @@ INCFILES = \
   polynomial_detrender_internals.hpp \
   spline_detrender.hpp \
   spline_detrender_internals.hpp \
+  std_dev_clipper.hpp \
+  std_dev_clipper_internals.hpp \
   unit_testing.hpp \
   upsample.hpp \
   upsample_internals.hpp \
