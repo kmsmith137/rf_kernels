@@ -9,7 +9,7 @@
 #define _RF_KERNELS_INTERNALS_HPP
 
 #if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
-#error "This source file needs to be compiled with C++0x support (g++ -std=c++0x)"
+#error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
 
 // Branch predictor hint
