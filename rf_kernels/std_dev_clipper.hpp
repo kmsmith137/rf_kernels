@@ -5,6 +5,8 @@
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
 
+#include "core.hpp"
+
 namespace rf_kernels {
 #if 0
 }; // pacify emacs c-mode

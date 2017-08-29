@@ -126,7 +126,7 @@ inline void _populate2()
 
 namespace {
     struct X {
-	X() { _populate2<16,16>(); }
+	X() { _populate2<256,32>(); }
     } x;
 }
 
@@ -175,6 +175,18 @@ std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, int
     }
 }
 
+
+std_dev_clipper::~std_dev_clipper()
+{
+    free(sd);
+    free(sd_valid);
+    free(ds_intensity);
+    free(ds_weights);
+
+    sd = ds_intensity = ds_weights = nullptr;
+    sd_valid = nullptr;
+}
+   
 
 void std_dev_clipper::clip(const float *intensity, float *weights, int stride)
 {
