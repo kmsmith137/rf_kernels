@@ -20,11 +20,19 @@ struct intensity_clipper {
     const bool two_pass;
 
     intensity_clipper(int nfreq, int nt_chunk, axis_type axis, int Df, int Dt, bool two_pass);
-    
+    ~intensity_clipper();
+
     void clip(const float *intensity, float *weights, int stride, double sigma, int niter, double iter_sigma);
+
+    float *ds_intensity = nullptr;
+    float *ds_weights = nullptr;
 
     // Function pointer to low-level kernel.
     void (*_f)(const float *, float *, int, int, int, int, double, double, float *, float *) = nullptr;
+
+    // Disallow copying, since we use bare pointers managed with malloc/free.
+    intensity_clipper(const intensity_clipper &) = delete;
+    intensity_clipper& operator=(const intensity_clipper &) = delete;
 };
 
 
