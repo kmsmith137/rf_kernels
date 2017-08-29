@@ -1,5 +1,6 @@
 #include <unordered_map>
 
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/downsample.hpp"
 #include "rf_kernels/downsample_internals.hpp"

@@ -77,7 +77,7 @@ inline void _populate2()
 
 namespace {
     struct X {
-	X() { _populate2<16,16>(); }
+	X() { _populate2<8,8>(); }
     } x;
 }
 

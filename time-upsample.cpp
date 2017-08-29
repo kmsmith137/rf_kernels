@@ -1,3 +1,4 @@
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 #include "rf_kernels/upsample.hpp"

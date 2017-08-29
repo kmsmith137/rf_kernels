@@ -37,6 +37,7 @@ OFILES = \
 
 TESTBINFILES = \
   test-downsample \
+  test-intensity-clipper \
   test-online-mask-filler \
   test-spline-detrender \
   test-upsample
@@ -98,63 +99,74 @@ librf_kernels.so: $(OFILES)
 ####################################################################################################
 
 
+CORE_DEPS = \
+  rf_kernels/core.hpp \
+  rf_kernels/internals.hpp
+
+TEST_DEPS = \
+  rf_kernels/core.hpp \
+  rf_kernels/internals.hpp \
+  rf_kernels/unit_testing.hpp
+
 CLIPPER_DEPS = \
   rf_kernels/core.hpp \
   rf_kernels/internals.hpp \
   rf_kernels/downsample_internals.hpp \
   rf_kernels/clipper_internals.hpp
 
-POLY_DETRENDER_DEPS = \
-  rf_kernels/core.hpp \
-  rf_kernels/internals.hpp \
-  rf_kernels/polynomial_detrender.hpp \
-  rf_kernels/polynomial_detrender_internals.hpp
 
-
-downsample.o: downsample.cpp rf_kernels/internals.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+downsample.o: downsample.cpp $(CORE_DEPS) rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
 	$(CPP) -c -o $@ $<
 
 intensity_clipper.o: intensity_clipper.cpp $(CLIPPER_DEPS) rf_kernels/intensity_clipper_internals.hpp rf_kernels/intensity_clipper.hpp
 	$(CPP) -c -o $@ $<
 
-misc.o: misc.cpp rf_kernels/core.hpp
+misc.o: misc.cpp $(CORE_DEPS)
 	$(CPP) -c -o $@ $<
 
-online_mask_filler.o: online_mask_filler.cpp rf_kernels/internals.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+online_mask_filler.o: online_mask_filler.cpp $(CORE_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-polynomial_detrender.o: polynomial_detrender.cpp $(POLY_DETRENDER_DEPS)
+polynomial_detrender.o: polynomial_detrender.cpp $(CORE_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
-spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
+spline_detrender.o: spline_detrender.cpp $(CORE_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
 std_dev_clipper.o: std_dev_clipper.cpp $(CLIPPER_DEPS) rf_kernels/internals.hpp rf_kernels/std_dev_clipper.hpp rf_kernels/std_dev_clipper_internals.hpp
 	$(CPP) -c -o $@ $<
 
-unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
+unit_testing.o: unit_testing.cpp $(TEST_DEPS)
 	$(CPP) -c -o $@ $<
 
-upsample.o: upsample.cpp rf_kernels/internals.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+upsample.o: upsample.cpp $(CORE_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
 	$(CPP) -c -o $@ $<
 
 
 ####################################################################################################
 
 
-test-downsample.o: test-downsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+
+test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
 	$(CPP) -c -o $@ $<
 
-test-online-mask-filler.o: test-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/intensity_clipper.hpp
 	$(CPP) -c -o $@ $<
 
-test-spline-detrender.o: test-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
+test-online-mask-filler.o: test-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-test-upsample.o: test-upsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+test-spline-detrender.o: test-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
+
+test-upsample.o: test-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+	$(CPP) -c -o $@ $<
+
 
 test-downsample: test-downsample.o downsample.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
@@ -173,23 +185,20 @@ test-upsample: test-upsample.o upsample.o
 #time-downsample.o: time-downsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
 #	$(CPP) -c -o $@ $<
 
-time-memory-access-patterns.o: time-memory-access-patterns.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp
+time-memory-access-patterns.o: time-memory-access-patterns.cpp $(TEST_DEPS)
 	$(CPP) -c -o $@ $<
 
-time-online-mask-filler.o: time-online-mask-filler.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
+time-online-mask-filler.o: time-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-time-polynomial-detrender.o: time-polynomial-detrender.cpp $(POLY_DETRENDER_DEPS) rf_kernels/unit_testing.hpp
+time-polynomial-detrender.o: time-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp
 	$(CPP) -c -o $@ $<
 
-time-spline-detrender.o: time-spline-detrender.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
+time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
-time-upsample.o: time-upsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+time-upsample.o: time-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
 	$(CPP) -c -o $@ $<
-
-
-####################################################################################################
 
 
 time-memory-access-patterns: time-memory-access-patterns.o unit_testing.o

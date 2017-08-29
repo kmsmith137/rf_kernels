@@ -1,6 +1,7 @@
 #include <iostream>
 #include "immintrin.h"
 
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/xorshift_plus.hpp"
 #include "rf_kernels/online_mask_filler.hpp"

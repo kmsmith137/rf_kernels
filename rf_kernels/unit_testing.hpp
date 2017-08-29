@@ -1,6 +1,8 @@
 #ifndef _RF_KERNELS_UNIT_TESTING_HPP
 #define _RF_KERNELS_UNIT_TESTING_HPP
 
+#include "core.hpp"
+
 #if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
@@ -54,6 +56,18 @@ inline std::vector<float> uniform_randvec(std::mt19937 &rng, ssize_t n, double l
 	ret[i] = uniform_rand(rng, lo, hi);
 
     return ret;
+}
+
+inline axis_type random_axis_type(std::mt19937 &rng)
+{
+    int r = randint(rng, 0, 3);
+    
+    if (r == 0)
+	return AXIS_FREQ;
+    else if (r == 1)
+	return AXIS_TIME;
+    else
+	return AXIS_NONE;
 }
 
 

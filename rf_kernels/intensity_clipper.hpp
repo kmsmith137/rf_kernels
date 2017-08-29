@@ -29,7 +29,7 @@ struct intensity_clipper {
     // Note: if 'iter_sigma' is zero, then 'sigma' will be used.
     intensity_clipper(int nfreq, int nt_chunk, axis_type axis, double sigma,
 		      int Df=1, int Dt=1, int niter=1, double iter_sigma=0,
-		      bool two_pass=false);
+		      bool two_pass=true);
     
     ~intensity_clipper();
 

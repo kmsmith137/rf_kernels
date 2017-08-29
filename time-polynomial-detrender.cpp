@@ -1,7 +1,8 @@
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 #include "rf_kernels/polynomial_detrender.hpp"
-#include "rf_kernels/polynomial_detrender_internals.hpp"
+// #include "rf_kernels/polynomial_detrender_internals.hpp"
 
 
 using namespace std;
