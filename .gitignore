@@ -9,6 +9,7 @@ test-downsample
 test-intensity-clipper
 test-online-mask-filler
 test-spline-detrender
+test-std-dev-clipper
 test-upsample
 
 time-memory-access-patterns

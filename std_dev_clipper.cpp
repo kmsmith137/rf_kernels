@@ -134,7 +134,7 @@ namespace {
 // -------------------------------------------------------------------------------------------------
 
 
-std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, int Df_, int Dt_, double sigma_, bool two_pass_) :
+std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, double sigma_, int Df_, int Dt_, bool two_pass_) :
     nfreq(nfreq_),
     nt_chunk(nt_chunk_),
     axis(axis_),

@@ -151,8 +151,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int str
     vector<float> in_w = vector<float> (nfreq * stride, 0.0);
 
     // Low value chosen to expose corner cases.
-    // float pnonzero = 1.0 / float(Df*Dt);
-    float pnonzero = 1.2;
+    float pnonzero = 1.0 / float(Df*Dt);
     for (size_t i = 0; i < in_w.size(); i++)
 	in_w[i] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
 
@@ -181,13 +180,13 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int str
 static void test_intensity_clipper(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
-	int Df = 1;  // 1 << randint(rng, 0, 5);
-	int Dt = 1;  // 1 << randint(rng, 0, 5);
-	int nfreq = 16;   // Df * randint(rng, 1, 17);
-	int nt = 16;      // 8 * Dt * randint(rng, 1, 17);
-	int stride = nt;  // randint(rng, nt, 2*nt);
+	int Df = 1 << randint(rng, 0, 4);
+	int Dt = 1 << randint(rng, 0, 4);
+	int nfreq = Df * randint(rng, 1, 17);
+	int nt = 8 * Dt * randint(rng, 1, 17);
+	int stride = randint(rng, nt, 2*nt);
 	axis_type axis = random_axis_type(rng);
-	double sigma = 1.0;   // XXX
+	double sigma = uniform_rand(rng, 1.0, 1.5);
 	
 	test_intensity_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt);
     }

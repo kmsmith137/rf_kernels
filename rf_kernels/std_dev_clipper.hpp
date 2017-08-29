@@ -25,7 +25,7 @@ struct std_dev_clipper {
     const double sigma;
     const bool two_pass;
 
-    std_dev_clipper(int nfreq, int nt_chunk, axis_type axis, int Df, int Dt, double sigma, bool two_pass);
+    std_dev_clipper(int nfreq, int nt_chunk, axis_type axis, double sigma, int Df=1, int Dt=1, bool two_pass=true);
     ~std_dev_clipper();
 
     void clip(const float *intensity, float *weights, int stride);
