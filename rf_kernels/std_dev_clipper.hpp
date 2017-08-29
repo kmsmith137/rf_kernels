@@ -1,0 +1,47 @@
+#ifndef _RF_KERNELS_STD_DEV_CLIPPER_HPP
+#define _RF_KERNELS_STD_DEV_CLIPPER_HPP
+
+#if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
+#error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
+#endif
+
+namespace rf_kernels {
+#if 0
+}; // pacify emacs c-mode
+#endif
+
+
+struct std_dev_clipper {
+    const int nfreq;
+    const int nt_chunk;
+
+    const axis_type axis;
+    const int Df;
+    const int Dt;
+    
+    const double sigma;
+    const bool two_pass;
+
+    std_dev_clipper(int nfreq, int nt_chunk, axis_type axis, int Df, int Dt, double sigma, bool two_pass);
+    ~std_dev_clipper();
+
+    void clip(const float *intensity, float *weights, int stride);
+
+    // Temporary buffers
+    float *sd = NULL;
+    int *sd_valid = NULL;
+    float *ds_intensity = NULL;
+    float *ds_weights = NULL;
+
+    // Function pointer to low-level kernel.
+    void (*_f)(const float *, float *, int, int, int, double, float *, int *, float *, float *) = nullptr;
+
+    // Disallow copying, since we use bare pointers managed with malloc/free.
+    std_dev_clipper(const std_dev_clipper &) = delete;
+    std_dev_clipper& operator=(const std_dev_clipper &) = delete;
+};
+
+
+}  // namespace rf_kernels
+
+#endif  // _RF_KERNELS_STD_DEV_CLIPPER_HPP
