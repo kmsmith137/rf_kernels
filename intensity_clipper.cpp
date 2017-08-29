@@ -85,12 +85,16 @@ namespace {
 // -------------------------------------------------------------------------------------------------
 
 
-intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_, int Df_, int Dt_, bool two_pass_) :
+intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_, double sigma_,
+				     int Df_, int Dt_, int niter_, double iter_sigma_, bool two_pass_) :
     nfreq(nfreq_),
     nt_chunk(nt_chunk_),
     axis(axis_),
+    sigma(sigma_),
     Df(Df_),
     Dt(Dt_),
+    niter(niter_),
+    iter_sigma(iter_sigma_ ? iter_sigma_ : sigma_),   // note: if iter_sigma=0, then sigma is used instead
     two_pass(two_pass_),
     _f(get_kernel(axis_,Df_,Dt_,two_pass_))
 { 
@@ -105,6 +109,15 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
     
     if (_unlikely((nt_chunk % (8*Dt)) != 0))
 	throw runtime_error("rf_kernels::intensity_clipper: expected nt_chunk to be a multiple of 8*Dt");
+
+    if (_unlikely(sigma < 1.0))
+	throw runtime_error("rf_kernels::intensity_clipper: expected sigma >= 1.0");
+
+    if (_unlikely(iter_sigma < 1.0))
+	throw runtime_error("rf_kernels::intensity_clipper: expected iter_sigma >= 1.0");
+
+    if (_unlikely(niter < 1))
+	throw runtime_error("rf_kernels::intensity_clipper: expected niter >= 1");
 
     // Depending on the arguments to the intensity_clipper, we may or may not need to allocate
     // temporary buffers for downsampled intensity and weights.
@@ -127,6 +140,10 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
 	throw runtime_error("rf_kernels internal error: bad axis in intensity_clipper constructor");
 
     this->ds_intensity = aligned_alloc<float> (nds);
+
+    if ((niter == 1) && !two_pass)
+	return;  // no ds_weights necessary
+    
     this->ds_weights = aligned_alloc<float> (nds);
 }
 
@@ -139,19 +156,13 @@ intensity_clipper::~intensity_clipper()
 }
 
 
-void intensity_clipper::clip(const float *intensity, float *weights, int stride, double sigma, int niter, double iter_sigma)
+void intensity_clipper::clip(const float *intensity, float *weights, int stride)
 {
     if (_unlikely(!intensity || !weights))
 	throw runtime_error("rf_kernels: null pointer passed to intensity_clipper::clip()");
 
     if (_unlikely(abs(stride) < nt_chunk))
 	throw runtime_error("rf_kernels::intensity_clipper: stride is too small");
-
-    if (_unlikely(sigma < 1.0))
-	throw runtime_error("rf_kernels::intensity_clipper: expected sigma >= 1.0");
-
-    if (_unlikely(niter < 1))
-	throw runtime_error("rf_kernels::intensity_clipper: expected niter >= 1");
 
     this->_f(intensity, weights, nfreq, nt_chunk, stride, niter, sigma, iter_sigma, ds_intensity, ds_weights);
 }

@@ -5,6 +5,9 @@
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
 
+// enum axis_type is declared here
+#include "core.hpp"
+
 namespace rf_kernels {
 #if 0
 }; // pacify emacs c-mode
@@ -15,14 +18,22 @@ struct intensity_clipper {
     const int nfreq;
     const int nt_chunk;
     const axis_type axis;
+    const double sigma;
+    
     const int Df;
     const int Dt;
+    const int niter;
+    const double iter_sigma;
     const bool two_pass;
 
-    intensity_clipper(int nfreq, int nt_chunk, axis_type axis, int Df, int Dt, bool two_pass);
+    // Note: if 'iter_sigma' is zero, then 'sigma' will be used.
+    intensity_clipper(int nfreq, int nt_chunk, axis_type axis, double sigma,
+		      int Df=1, int Dt=1, int niter=1, double iter_sigma=0,
+		      bool two_pass=false);
+    
     ~intensity_clipper();
 
-    void clip(const float *intensity, float *weights, int stride, double sigma, int niter, double iter_sigma);
+    void clip(const float *intensity, float *weights, int stride);
 
     float *ds_intensity = nullptr;
     float *ds_weights = nullptr;
