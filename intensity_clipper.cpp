@@ -19,17 +19,15 @@ namespace rf_kernels {
 #endif
 
 
-// kernel(intensity, weights, nfreq, nt_chunk, stride, niter, sigma, iter_sigma, ds_intensity, ds_weights)
-using kernel_t = void (*)(const float *, float *, int, int, int, int, double, double, float *, float *);
-
-
-
 // -------------------------------------------------------------------------------------------------
 //
 // global kernel table
 
 
-// (axis, Df, Dt, two_pass)
+// kernel(intensity, weights, nfreq, nt_chunk, stride, niter, sigma, iter_sigma, ds_intensity, ds_weights)
+using kernel_t = void (*)(const float *, float *, int, int, int, int, double, double, float *, float *);
+ 
+// (axis, Df, Dt, two_pass) -> kernel
 static unordered_map<array<int,4>, kernel_t> global_kernel_table;
 
 
@@ -40,7 +38,7 @@ static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
     
     if (_unlikely(p == global_kernel_table.end())) {
 	stringstream ss;
-	ss << "rf_kernels::intensity_clipper: (axis,Dt,Dt,two_pass)=("
+	ss << "rf_kernels::intensity_clipper: (axis,Df,Dt,two_pass)=("
 	   << axis << "," << Df << "," << Dt << "," << t << ") is invalid or unimplemented";
 	throw runtime_error(ss.str());
     }
