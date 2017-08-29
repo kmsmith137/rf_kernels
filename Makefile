@@ -30,6 +30,7 @@ OFILES = \
   online_mask_filler.o \
   polynomial_detrender.o \
   spline_detrender.o \
+  std_dev_clipper.o \
   upsample.o
 
 TESTBINFILES = \
@@ -124,6 +125,9 @@ polynomial_detrender.o: polynomial_detrender.cpp $(POLY_DETRENDER_DEPS)
 	$(CPP) -c -o $@ $<
 
 spline_detrender.o: spline_detrender.cpp rf_kernels/internals.hpp rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
+	$(CPP) -c -o $@ $<
+
+std_dev_clipper.o: std_dev_clipper.cpp $(CLIPPER_DEPS) rf_kernels/internals.hpp rf_kernels/std_dev_clipper.hpp rf_kernels/std_dev_clipper_internals.hpp
 	$(CPP) -c -o $@ $<
 
 unit_testing.o: unit_testing.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp

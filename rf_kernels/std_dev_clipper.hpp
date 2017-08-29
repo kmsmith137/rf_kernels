@@ -28,10 +28,10 @@ struct std_dev_clipper {
     void clip(const float *intensity, float *weights, int stride);
 
     // Temporary buffers
-    float *sd = NULL;
-    int *sd_valid = NULL;
-    float *ds_intensity = NULL;
-    float *ds_weights = NULL;
+    float *sd = nullptr;
+    int *sd_valid = nullptr;
+    float *ds_intensity = nullptr;
+    float *ds_weights = nullptr;
 
     // Function pointer to low-level kernel.
     void (*_f)(const float *, float *, int, int, int, double, float *, int *, float *, float *) = nullptr;

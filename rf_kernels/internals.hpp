@@ -62,6 +62,12 @@ inline ssize_t _align(ssize_t nbytes, ssize_t nalign=128)
     return ((nbytes + nalign - 1) / nalign) * nalign;
 }
 
+template<typename T>
+inline T square(T x)
+{
+    return x*x;
+}
+
 // Returns (m/n), in a situation where we want to assert that n evenly divides m.
 inline ssize_t xdiv(ssize_t m, ssize_t n)
 {

@@ -1,6 +1,7 @@
 #ifndef _RF_KERNELS_STD_DEV_CLIPPER_INTERNALS_HPP
 #define _RF_KERNELS_STD_DEV_CLIPPER_INTERNALS_HPP
 
+#include <cmath>
 #include <simd_helpers/simd_float32.hpp>
 
 #include "downsample_internals.hpp"
@@ -97,9 +98,9 @@ inline void _kernel_std_dev_f(const T *intensity, const T *weights, int nfreq, i
 template<typename T, int S, int Df, int Dt, bool TwoPass>
 inline void _kernel_std_dev_clip_freq_axis(const T *intensity, T *weights, int nfreq, int nt, int stride, double sigma, T *out_sd, smask_t<T,1> *out_valid, T *ds_int, T *ds_wt)
 {
-    _kernel_std_dev_f<T,S,Df,Dt,TwoPass> (intensity, weights, nfreq, nt, stride, out_sd, out_valid, ds_int);
+    _kernel_std_dev_f<T,S,Df,Dt,TwoPass> (intensity, weights, nfreq, nt, stride, out_sd, out_valid, ds_int, ds_wt);
 
-    clip_1d(nt/Dt, out_sd, outvalid, sigma);
+    clip_1d(nt/Dt, out_sd, out_valid, sigma);
 
     _kernel_mask_columns<T,S,Dt> (weights, out_valid, nfreq, nt, stride);
 }

@@ -13,7 +13,7 @@
 
 using namespace std;
 
-namespace rf_pipelines {
+namespace rf_kernels {
 #if 0
 }; // pacify emacs c-mode
 #endif
@@ -98,25 +98,25 @@ static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
 }
 
 
-template<int Df, int Dt, typename enable_if<(Dt==0),type>::int = 0>
+template<int Df, int Dt, typename enable_if<(Dt==0),int>::type = 0>
 inline void _populate1() { }
 
-template<int Df, int Dt, typename enable_if<(Dt>0),type>::int = 0>
+template<int Df, int Dt, typename enable_if<(Dt>0),int>::type = 0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    global_kernel_table[{{AXIS_FREQ,Df,Dt,false}}] = _kernel_std_dev_clip_freq_axis<float,S,Df,Dt,false>;
-    global_kernel_table[{{AXIS_TIME,Df,Dt,false}}] = _kernel_std_dev_clip_time_axis<float,S,Df,Dt,false>;
-    global_kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = _kernel_std_dev_clip_freq_axis<float,S,Df,Dt,true>;
-    global_kernel_table[{{AXIS_TIME,Df,Dt,true}}] = _kernel_std_dev_clip_time_axis<float,S,Df,Dt,true>;
+    global_kernel_table[{{AXIS_FREQ,Df,Dt,false}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,false>;
+    global_kernel_table[{{AXIS_TIME,Df,Dt,false}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,false>;
+    global_kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,true>;
+    global_kernel_table[{{AXIS_TIME,Df,Dt,true}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,true>;
 }
 
 
-template<int Df, int Dt, typename enable_if<(Df==0),type>::int = 0>
+template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
 inline void _populate2() { }
 
-template<int Df, int Dt, typename enable_if<(Df>0),type>::int = 0>
+template<int Df, int Dt, typename enable_if<(Df>0),int>::type = 0>
 inline void _populate2()
 {
     _populate2<(Df/2),Dt> ();
@@ -145,57 +145,46 @@ std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, int
     _f(get_kernel(axis_,Df_,Dt_,two_pass_))
 {
     if (_unlikely(nfreq <= 0))
-	throw runtime_error("rf_pipelines std_dev clipper: nfreq=" + to_string(nfreq) + ", positive value was expected");
+	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq > 0");
 
-    if (_unlikely(nt <= 0))
-	throw runtime_error("rf_pipelines std_dev clipper: nt=" + to_string(nt) + ", positive value was expected");
+    if (_unlikely(nt_chunk <= 0))
+	throw runtime_error("rf_kernels::std_dev_clipper: expected nt_chunk > 0");
+
+    if (_unlikely(nfreq % Df))
+	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq to be a multiple of Df");
+
+    if (_unlikely(nt_chunk % (8*Dt)))
+	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq to be a multiple of 8*Dt");
 
     if (_unlikely(sigma < 1.0))
-	throw runtime_error("rf_pipelines std_dev clipper: sigma=" + to_string(sigma) + " must be >= 1.0");
-
-    if (_unlikely((nfreq % Df) != 0))
-	throw runtime_error("rf_pipelines std_dev clipper: nfreq=" + to_string(nfreq)
-			    + " must be a multiple of the downsampling factor Df=" + to_string(Df));
-
-    if (_unlikely((nt % (Dt*S)) != 0))
-	throw runtime_error("rf_pipelines std_dev clipper: nt=" + to_string(nt)
-			    + " must be a multiple of the downsampling factor Dt=" + to_string(Dt)
-			    + " multiplied by constants::single_precision_simd_length=" + to_string(S));
-
-    if (_unlikely((Df > MaxDf) || (Dt > MaxDt)))
-	throw runtime_error("rf_pipelines std_dev clipper: (Df,Dt)=(" + to_string(Df) + "," + to_string(Dt) + ")"
-			    + " exceeds compile time limits; to fix this see 'constants' in rf_pipelines.hpp");
+	throw runtime_error("rf_kernels::std_dev_clipper: expected sigma >= 1");
 
     // The sizes of the temporary buffers needed for the std_dev_clipper depend on its arguments.
-    // The function below contains logic which sorts everything out and allocates the properly-sized buffers.
     //
     // FIXME: the details of this logic are opaque and depend on chasing through kernels/*.hpp!
     // It would be nice to have comments in these files which make it more transparent.
 
-    int sd_nalloc = (axis == AXIS_FREQ) ? (nt/Dt) : (nfreq/Df);
+    int sd_nalloc = (axis == AXIS_FREQ) ? (nt_chunk/Dt) : (nfreq/Df);
 
-    buf.sd = aligned_alloc<T> (sd_nalloc);
-    buf.sd_valid = aligned_alloc<int> (sd_nalloc);
+    this->sd = aligned_alloc<float> (sd_nalloc);
+    this->sd_valid = aligned_alloc<int> (sd_nalloc);
 
     if (two_pass && ((Df > 1) || (Dt > 1))) {
-	buf.ds_intensity = aligned_alloc<T> ((nfreq*nt) / (Df*Dt));
-	buf.ds_weights = aligned_alloc<T> ((nfreq*nt) / (Df*Dt));
+	this->ds_intensity = aligned_alloc<float> ((nfreq*nt_chunk) / (Df*Dt));
+	this->ds_weights = aligned_alloc<float> ((nfreq*nt_chunk) / (Df*Dt));
     }
 }
 
 
-void std_dev_clipper::clip()
+void std_dev_clipper::clip(const float *intensity, float *weights, int stride)
 {
-    if (_unlikely(!intensity))
-	throw runtime_error("rf_pipelines: apply_std_dev_clipper(): NULL intensity pointer");
-    if (_unlikely(!weights))
-	throw runtime_error("rf_pipelines: apply_std_dev_clipper(): NULL weights pointer");
-    if (_unlikely(abs(stride) < nt))
-	throw runtime_error("rf_pipelines std_dev clipper: stride=" + to_string(stride) + " must be >= nt");
+    if (_unlikely(!intensity || !weights))
+	throw runtime_error("rf_kernels: null pointer passed to std_dev_clipper::clip()");
+    if (_unlikely(abs(stride) < nt_chunk))
+	throw runtime_error("rf_kernels::std_dev_clipper: stride is too small");
 
-    // kernel(intensity, weights, nfreq, nt, stride, sigma, tmp_sd, tmp_valid)
-    kernel(buf, intensity, weights, nfreq, nt, stride, sigma);
+    this->_f(intensity, weights, nfreq, nt_chunk, stride, sigma, sd, sd_valid, ds_intensity, ds_weights);
 }
 
 
-}  // namespace rf_pipelines
+}  // namespace rf_kernels
