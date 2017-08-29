@@ -85,7 +85,7 @@ static unordered_map<array<int,4>, kernel_t> global_kernel_table;
 static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
 {
     int t = two_pass ? 1 : 0;
-    auto p = global_kernel_table.find({axis,Df,Dt,t});
+    auto p = global_kernel_table.find({{axis,Df,Dt,t}});
     
     if (_unlikely(p == global_kernel_table.end())) {
 	stringstream ss;
@@ -106,12 +106,12 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
     
-    global_kernel_table[{AXIS_FREQ,Df,Dt,0}] = _kernel_clip_1d_f<float,8,Df,Dt,false>;
-    global_kernel_table[{AXIS_FREQ,Df,Dt,1}] = _kernel_clip_1d_f<float,8,Df,Dt,true>;
-    global_kernel_table[{AXIS_TIME,Df,Dt,0}] = _kernel_clip_1d_t<float,8,Df,Dt,false>;
-    global_kernel_table[{AXIS_TIME,Df,Dt,1}] = _kernel_clip_1d_t<float,8,Df,Dt,true>;
-    global_kernel_table[{AXIS_NONE,Df,Dt,0}] = _kernel_clip_2d<float,8,Df,Dt,false>;
-    global_kernel_table[{AXIS_NONE,Df,Dt,1}] = _kernel_clip_2d<float,8,Df,Dt,true>;
+    global_kernel_table[{{AXIS_FREQ,Df,Dt,0}}] = _kernel_clip_1d_f<float,8,Df,Dt,false>;
+    global_kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = _kernel_clip_1d_f<float,8,Df,Dt,true>;
+    global_kernel_table[{{AXIS_TIME,Df,Dt,0}}] = _kernel_clip_1d_t<float,8,Df,Dt,false>;
+    global_kernel_table[{{AXIS_TIME,Df,Dt,1}}] = _kernel_clip_1d_t<float,8,Df,Dt,true>;
+    global_kernel_table[{{AXIS_NONE,Df,Dt,0}}] = _kernel_clip_2d<float,8,Df,Dt,false>;
+    global_kernel_table[{{AXIS_NONE,Df,Dt,1}}] = _kernel_clip_2d<float,8,Df,Dt,true>;
 }
 
 

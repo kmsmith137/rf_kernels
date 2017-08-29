@@ -46,7 +46,7 @@ inline upsampling_kernel_t get_kernel(int Df, int Dt)
 	Dt = 16;
     }
 
-    auto p = global_kernel_table.find({Df,Dt});
+    auto p = global_kernel_table.find({{Df,Dt}});
     
     if (_unlikely(p == global_kernel_table.end()))
 	_bad_Df_Dt(Df, Dt);
@@ -88,7 +88,7 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
-    global_kernel_table[{Df,Dt}] = kernel<Df,Dt>::get();
+    global_kernel_table[{{Df,Dt}}] = kernel<Df,Dt>::get();
 }
 
 
