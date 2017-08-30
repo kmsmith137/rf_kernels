@@ -98,7 +98,7 @@ static void reference_std_dev_clipper(const float *intensity, float *weights, in
 
     for (int iouter = 0; iouter < nouter; iouter++) {
 	float dummy_mean;
-	weighted_mean_variance_1d(dummy_mean, var_1d[iouter], intensity + iouter*ostride, weights + iouter*ostride, ninner, istride);
+	weighted_mean_variance_1d(dummy_mean, var_1d[iouter], intensity_ds + iouter*ostride, weights_ds + iouter*ostride, ninner, istride);
 	var_mask_1d[iouter] = (var_1d[iouter] > 0.0) ? 1.0 : 0.0;
     }
 
@@ -147,13 +147,18 @@ static void reference_std_dev_clipper(const float *intensity, float *weights, in
 
 static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt)
 {
-    vector<float> in_i = uniform_randvec(rng, nfreq * stride, 0.0, 1.0);
+    vector<float> in_i = vector<float> (nfreq * stride, 0.0);
     vector<float> in_w = vector<float> (nfreq * stride, 0.0);
 
     // Low value chosen to expose corner cases.
     float pnonzero = 1.0 / float(Df*Dt);
-    for (size_t i = 0; i < in_w.size(); i++)
-	in_w[i] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int it = 0; it < nt; it++) {
+	    in_i[ifreq*stride+it] = uniform_rand(rng);
+	    in_w[ifreq*stride+it] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
+	}
+    }
 
     // Copy weights before running clippers.
     vector<float> in_w2 = in_w;
