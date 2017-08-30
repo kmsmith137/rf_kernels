@@ -44,6 +44,7 @@ TESTBINFILES = \
   test-upsample
 
 TIMEBINFILES = \
+  time-downsample \
   time-memory-access-patterns \
   time-online-mask-filler \
   time-polynomial-detrender \
@@ -189,8 +190,8 @@ test-upsample: test-upsample.o upsample.o
 ####################################################################################################
 
 
-#time-downsample.o: time-downsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
-#	$(CPP) -c -o $@ $<
+time-downsample.o: time-downsample.cpp rf_kernels/internals.hpp rf_kernels/unit_testing.hpp rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+	$(CPP) -c -o $@ $<
 
 time-memory-access-patterns.o: time-memory-access-patterns.cpp $(TEST_DEPS)
 	$(CPP) -c -o $@ $<
@@ -207,6 +208,9 @@ time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/splin
 time-upsample.o: time-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
 	$(CPP) -c -o $@ $<
 
+
+time-downsample: time-downsample.o unit_testing.o downsample.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-memory-access-patterns: time-memory-access-patterns.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^

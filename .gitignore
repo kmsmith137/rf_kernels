@@ -12,6 +12,7 @@ test-spline-detrender
 test-std-dev-clipper
 test-upsample
 
+time-downsample
 time-memory-access-patterns
 time-online-mask-filler
 time-polynomial-detrender
