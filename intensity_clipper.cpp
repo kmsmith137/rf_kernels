@@ -20,23 +20,28 @@ namespace rf_kernels {
 
 
 // -------------------------------------------------------------------------------------------------
-//
-// global kernel table
 
+
+// Inner namespace for the kernel table.
+// Must have a different name for each kernel, otherwise gcc is happy but clang has trouble!
+namespace intensity_clipper_kernel_table {
+#if 0
+}; // pacify emacs c-mode
+#endif
 
 // kernel(intensity, weights, nfreq, nt_chunk, stride, niter, sigma, iter_sigma, ds_intensity, ds_weights)
 using kernel_t = void (*)(const float *, float *, int, int, int, int, double, double, float *, float *);
  
 // (axis, Df, Dt, two_pass) -> kernel
-static unordered_map<array<int,4>, kernel_t> global_kernel_table;
+static unordered_map<array<int,4>, kernel_t> kernel_table;
 
 
 static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
 {
     int t = two_pass ? 1 : 0;
-    auto p = global_kernel_table.find({{axis,Df,Dt,t}});
+    auto p = kernel_table.find({{axis,Df,Dt,t}});
     
-    if (_unlikely(p == global_kernel_table.end())) {
+    if (_unlikely(p == kernel_table.end())) {
 	stringstream ss;
 	ss << "rf_kernels::intensity_clipper: (axis,Df,Dt,two_pass)=("
 	   << axis << "," << Df << "," << Dt << "," << t << ") is invalid or unimplemented";
@@ -55,12 +60,12 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
     
-    global_kernel_table[{{AXIS_FREQ,Df,Dt,0}}] = _kernel_clip_1d_f<float,8,Df,Dt,false>;
-    global_kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = _kernel_clip_1d_f<float,8,Df,Dt,true>;
-    global_kernel_table[{{AXIS_TIME,Df,Dt,0}}] = _kernel_clip_1d_t<float,8,Df,Dt,false>;
-    global_kernel_table[{{AXIS_TIME,Df,Dt,1}}] = _kernel_clip_1d_t<float,8,Df,Dt,true>;
-    global_kernel_table[{{AXIS_NONE,Df,Dt,0}}] = _kernel_clip_2d<float,8,Df,Dt,false>;
-    global_kernel_table[{{AXIS_NONE,Df,Dt,1}}] = _kernel_clip_2d<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,0}}] = _kernel_clip_1d_f<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = _kernel_clip_1d_f<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_TIME,Df,Dt,0}}] = _kernel_clip_1d_t<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = _kernel_clip_1d_t<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_NONE,Df,Dt,0}}] = _kernel_clip_2d<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_NONE,Df,Dt,1}}] = _kernel_clip_2d<float,8,Df,Dt,true>;
 }
 
 
@@ -75,11 +80,11 @@ inline void _populate2()
 }
 
 
-namespace {
-    struct X {
-	X() { _populate2<8,8>(); }
-    } x;
-}
+struct _initializer {
+    _initializer() { _populate2<256,32>(); }
+} _init;
+
+}  // namespace intensity_clipper_kernel_table
 
 
 // -------------------------------------------------------------------------------------------------
@@ -96,7 +101,7 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
     niter(niter_),
     iter_sigma(iter_sigma_ ? iter_sigma_ : sigma_),   // note: if iter_sigma=0, then sigma is used instead
     two_pass(two_pass_),
-    _f(get_kernel(axis_,Df_,Dt_,two_pass_))
+    _f(intensity_clipper_kernel_table::get_kernel(axis_,Df_,Dt_,two_pass_))
 { 
     if (_unlikely(nfreq <= 0))
 	throw runtime_error("rf_kernels::intensity_clipper: expected nfreq > 0");

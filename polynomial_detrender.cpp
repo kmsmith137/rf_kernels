@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
@@ -19,67 +20,61 @@ namespace rf_kernels {
 }; // pacify emacs c-mode
 #endif
 
-
 #ifdef __AVX__
 constexpr int Sfid = 8;
 #else
 constexpr int Sfid = 4;
 #endif
 
-// To increase the maximum allowed polynomial degree, edit this line and rebuild rf_kernels ('make all install').
-constexpr int polynomial_detrender_max_deg = 20;
-
-// Usage: kernel(nfreq, nt, intensity, weights, stride, epsilon)
-using detrending_kernel_t = void (*)(int, int, float *, float *, int, double);
-
 
 // -------------------------------------------------------------------------------------------------
-//
-// _fill_detrending_kernel_table<S,N>(): fills shape (N,2) array with kernels.
-// The outer index is a polynomial degree 0 <= polydeg < N, and the inner index is the axis.
 
-static_assert(AXIS_FREQ==0, "This implementation assumes AXIS_FREQ==0");
-static_assert(AXIS_TIME==1, "This implementation assumes AXIS_TIME==1");                                          
 
-template<int S, int N, typename std::enable_if<(N==0),int>::type = 0>
-inline void fill_detrending_kernel_table(detrending_kernel_t *out) { }
+// Inner namespace for the kernel table.
+// Must have a different name for each kernel, otherwise gcc is happy but clang has trouble!
+namespace polynomial_detrender_kernel_table {
+#if 0
+}; // pacify emacs c-mode
+#endif
 
-template<int S, int N, typename std::enable_if<(N>0),int>::type = 0>
-inline void fill_detrending_kernel_table(detrending_kernel_t *out)
+// Usage: kernel(nfreq, nt, intensity, weights, stride, epsilon)
+using kernel_t = void (*)(int, int, float *, float *, int, double);
+ 
+// (axis, polydeg) -> kernel
+static unordered_map<array<int,2>, kernel_t> kernel_table;
+
+
+static kernel_t get_kernel(axis_type axis, int polydeg)
 {
-    fill_detrending_kernel_table<S,N-1> (out);
-    out[2*(N-1)] = _kernel_detrend_f<float,S,N>;
-    out[2*(N-1)+1] = _kernel_detrend_t<float,S,N>;
+    auto p = kernel_table.find({{axis,polydeg}});
+    
+    if (_unlikely(p == kernel_table.end())) {
+	stringstream ss;
+	ss << "rf_kernels::polynomial_detrender: (axis,polydeg)=(" << axis << "," << polydeg << ") is invalid or unimplemented";
+	throw runtime_error(ss.str());
+    }
+    
+    return p->second;
 }
 
 
-struct detrending_kernel_table {
-    static constexpr int MaxDeg = polynomial_detrender_max_deg;
+template<int D, typename std::enable_if<(D<0),int>::type = 0>
+inline void _populate() { }
 
-    std::vector<detrending_kernel_t> entries;
-
-    detrending_kernel_table() : entries(2*MaxDeg+2)
-    {
-	fill_detrending_kernel_table<Sfid,MaxDeg+1> (&entries[0]);
-    }
-
-    inline detrending_kernel_t get_kernel(axis_type axis, int polydeg)
-    {
-	if (_unlikely((axis != AXIS_FREQ) && (axis != AXIS_TIME)))
-	    throw runtime_error("rf_kernels::polynomial_detrender: axis=" + to_string(axis) + " is not defined for this transform");
-
-	if (_unlikely(polydeg < 0))
-	    throw runtime_error("rf_kernels::polynomial_detrender: polydeg=" + to_string(polydeg) + ", positive number expected");
-
-	if (_unlikely(polydeg > MaxDeg))
-	    throw runtime_error("rf_kernels::polynomial_detrender: polydeg=" + to_string(polydeg) + " is too large (the limit can be changed in rf_kernels/polynomial_detrender.cpp)");
-
-	return entries[2*polydeg + axis];
-    }
-};
+template<int D, typename std::enable_if<(D>=0),int>::type = 0>
+inline void _populate() 
+{
+    _populate<D-1> ();
+    kernel_table[{{AXIS_FREQ,D}}] = _kernel_detrend_f<float,Sfid,D+1>;
+    kernel_table[{{AXIS_TIME,D}}] = _kernel_detrend_t<float,Sfid,D+1>;
+}
 
 
-static detrending_kernel_table global_detrending_kernel_table;
+struct _initializer {
+    _initializer() { _populate<20> (); }
+} _init;
+
+}  // namespace polynomial_detrender_kernel_table
 
 
 // -------------------------------------------------------------------------------------------------
@@ -88,7 +83,7 @@ static detrending_kernel_table global_detrending_kernel_table;
 polynomial_detrender::polynomial_detrender(axis_type axis_, int polydeg_) :
     axis(axis_),
     polydeg(polydeg_),
-    _f(global_detrending_kernel_table.get_kernel(axis_, polydeg_))
+    _f(polynomial_detrender_kernel_table::get_kernel(axis_, polydeg_))
 { }
 
 

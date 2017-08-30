@@ -69,25 +69,29 @@ void clip_1d(int n, float *tmp_sd, int *tmp_valid, double sigma)
     }
 }
 
-
 // -------------------------------------------------------------------------------------------------
-//
-// std_dev_clipper_kernel_table
 
+
+// Inner namespace for the kernel table
+// Must have a different name for each kernel, otherwise gcc is happy but clang has trouble!
+namespace std_dev_clipper_table {
+#if 0
+}; // pacify emacs c-mode
+#endif
 
 // kernel(intensity, weights, nfreq, nt, stride, sigma, out_sd, out_valid, ds_int, ds_wt)
 using kernel_t = void (*)(const float *, float *, int, int, int, double, float *, int *, float *, float *);
 
 // (axis, Df, Dt, two_pass) -> kernel
-static unordered_map<array<int,4>, kernel_t> global_kernel_table;
+static unordered_map<array<int,4>, kernel_t> kernel_table;
 
 
 static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
 {
     int t = two_pass ? 1 : 0;
-    auto p = global_kernel_table.find({{axis,Df,Dt,t}});
+    auto p = kernel_table.find({{axis,Df,Dt,t}});
     
-    if (_unlikely(p == global_kernel_table.end())) {
+    if (_unlikely(p == kernel_table.end())) {
 	stringstream ss;
 	ss << "rf_kernels::std_dev_clipper: (axis,Df,Dt,two_pass)=("
 	   << axis << "," << Df << "," << Dt << "," << t << ") is invalid or unimplemented";
@@ -106,10 +110,10 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    global_kernel_table[{{AXIS_FREQ,Df,Dt,false}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,false>;
-    global_kernel_table[{{AXIS_TIME,Df,Dt,false}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,false>;
-    global_kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,true>;
-    global_kernel_table[{{AXIS_TIME,Df,Dt,true}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,false}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_TIME,Df,Dt,false}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_TIME,Df,Dt,true}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,true>;
 }
 
 
@@ -123,12 +127,12 @@ inline void _populate2()
     _populate1<Df,Dt> ();
 }
 
+struct _initializer {
+    _initializer() { _populate2<256,32>(); }
+} _init;
 
-namespace {
-    struct X {
-	X() { _populate2<256,32>(); }
-    } x;
-}
+
+}  // namespace std_dev_clipper_table
 
 
 // -------------------------------------------------------------------------------------------------
@@ -142,7 +146,7 @@ std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, dou
     Dt(Dt_),
     sigma(sigma_),
     two_pass(two_pass_),
-    _f(get_kernel(axis_,Df_,Dt_,two_pass_))
+    _f(std_dev_clipper_table::get_kernel(axis_,Df_,Dt_,two_pass_))
 {
     if (_unlikely(nfreq <= 0))
 	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq > 0");

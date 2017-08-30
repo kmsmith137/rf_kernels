@@ -14,8 +14,39 @@ namespace rf_kernels {
 #endif
 
 
+// -------------------------------------------------------------------------------------------------
+
+
+// Inner namespace for the kernel table
+// Must have a different name for each kernel, otherwise gcc is happy but clang has trouble!
+namespace downsampling_kernel_table {
+#if 0
+}; // pacify emacs c-mode
+#endif
+
 // Usage: kernel(nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt)
-using downsampling_kernel_t = void (*)(int, int, float *, float *, int, const float *, const float *, int, int, int);
+using kernel_t = void (*)(int, int, float *, float *, int, const float *, const float *, int, int, int);
+
+static unordered_map<array<int,2>, kernel_t> kernel_table;   // (Df,Dt) -> kernel
+
+
+inline void _no_kernel(int Df, int Dt)
+{
+    stringstream ss;
+    ss << "rf_kernels::wi_downsampler: (Df,Dt)=(" << Df << "," << Dt << ") is not supported";
+    throw runtime_error(ss.str());
+}
+
+
+inline kernel_t get_kernel(int Df, int Dt)
+{
+    auto p = kernel_table.find({{Df,Dt}});
+    
+    if (_unlikely(p == kernel_table.end()))
+	_no_kernel(Df, Dt);
+
+    return p->second;
+}
 
 
 // FIXME this wrapper will go away soon
@@ -26,34 +57,6 @@ inline void kernel_wi_downsample_Df_Dt(int nfreq_out, int nt_out, float *out_i, 
     _kernel_downsample_2d<float,8,Df,Dt> (out_i, out_w, ostride, in_i, in_w, nfreq_out * Df, nt_out * Dt, istride);
 }
 
-
-// -------------------------------------------------------------------------------------------------
-//
-// global kernel table
-
-
-static unordered_map<array<int,2>, downsampling_kernel_t> global_kernel_table;   // (Df,Dt) -> kernel
-
-
-inline void _bad_Df_Dt(int Df, int Dt)
-{
-    stringstream ss;
-    ss << "rf_kernels::wi_downsampler: (Df,Dt)=(" << Df << "," << Dt << ") is not supported";
-    throw runtime_error(ss.str());
-}
-
-
-inline downsampling_kernel_t get_kernel(int Df, int Dt)
-{
-    auto p = global_kernel_table.find({{Df,Dt}});
-    
-    if (_unlikely(p == global_kernel_table.end()))
-	_bad_Df_Dt(Df, Dt);
-
-    return p->second;
-}
-
-
 template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
 inline void _populate1() { }
 
@@ -61,7 +64,7 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
-    global_kernel_table[{{Df,Dt}}] = kernel_wi_downsample_Df_Dt<Df,Dt>;
+    kernel_table[{{Df,Dt}}] = kernel_wi_downsample_Df_Dt<Df,Dt>;
 }
 
 
@@ -77,11 +80,12 @@ inline void _populate2()
 }
 
 
-namespace {
-    struct X {
-	X() { _populate2<256,32>(); }
-    } x;
-}
+struct _initializer {
+    _initializer() { _populate2<256,32>(); }
+} _init;
+
+
+}  // namespace downsampling_kernel_table
 
 
 // -------------------------------------------------------------------------------------------------
@@ -90,7 +94,7 @@ namespace {
 wi_downsampler::wi_downsampler(int Df_, int Dt_) :
     Df(Df_),
     Dt(Dt_),
-    _f(get_kernel(Df_,Dt_))
+    _f(downsampling_kernel_table::get_kernel(Df_,Dt_))
 { }
     
 
