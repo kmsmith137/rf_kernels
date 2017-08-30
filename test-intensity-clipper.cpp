@@ -7,6 +7,9 @@ using namespace std;
 using namespace rf_kernels;
 
 
+// -------------------------------------------------------------------------------------------------
+
+
 // Helper for reference_intensity_clipper().
 // The 'epsilon' parameter is used to exclude data when the variance
 // is small compared to the (mean)^2, see below.
@@ -145,8 +148,12 @@ static void reference_intensity_clipper(const float *intensity, float *weights, 
 }
 
 
-static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt)
+static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt, int niter)
 {
+    cout << "test_intensity_clipper: nfreq=" << nfreq << ", nt=" << nt 
+	 << ", stride=" << stride << ", axis=" << axis << ", sigma=" << sigma 
+	 << ", Df=" << Df << ", Dt=" << Dt << ", niter=" << niter << endl;
+
     vector<float> in_i = uniform_randvec(rng, nfreq * stride, 0.0, 1.0);
     vector<float> in_w = vector<float> (nfreq * stride, 0.0);
 
@@ -157,13 +164,19 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int str
 
     // Copy weights before running clippers.
     vector<float> in_w2 = in_w;
-    vector<float> in_w3 = in_w;
 
     // Fast kernel
-    intensity_clipper ic(nfreq, nt, axis, sigma, Df, Dt);
+    intensity_clipper ic(nfreq, nt, axis, sigma, Df, Dt, niter);
     ic.clip(&in_i[0], &in_w[0], stride);
 
+    // Fast kernel (niter-1)
+    if (niter > 1) {
+	intensity_clipper ic2(nfreq, nt, axis, sigma, Df, Dt, niter-1);
+	ic2.clip(&in_i[0], &in_w2[0], stride);
+    }
+
     // Reference kernels
+    vector<float> in_w3 = in_w2;
     reference_intensity_clipper(&in_i[0], &in_w2[0], nfreq, nt, stride, axis, 0.999 * sigma, Df, Dt);
     reference_intensity_clipper(&in_i[0], &in_w3[0], nfreq, nt, stride, axis, 1.001 * sigma, Df, Dt);
 
@@ -185,10 +198,11 @@ static void test_intensity_clipper(std::mt19937 &rng)
 	int nfreq = Df * randint(rng, 1, 17);
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
-	axis_type axis = random_axis_type(rng);
 	double sigma = uniform_rand(rng, 1.0, 1.5);
+	axis_type axis = random_axis_type(rng);
+	int niter = 1;   // FIXME
 	
-	test_intensity_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt);
+	test_intensity_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt, niter);
     }
 
     cout << "test_intensity_clipper: pass" << endl;
