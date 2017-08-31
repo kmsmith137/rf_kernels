@@ -301,8 +301,26 @@ struct _wi_downsampler_0d_Dtlg
 // the last pass.
 //
 // Caller must check that nt_out is a multiple of S.  (Note that nt_in = nt_out * Dt).
-//
-// FIXME there is a lot of cut-and-paste between these two kernels, can this be improved?
+
+
+template<typename T, int S>
+struct _wi_downsampler_1d_outbuf {
+    T *i_out;
+    T *w_out;
+
+    _wi_downsampler_1d_outbuf(T *i_out_, T *w_out_) : i_out(i_out_), w_out(w_out_) { }
+    
+    simd_t<T,S> zero = 0;
+    simd_t<T,S> one = 1;
+
+    inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
+    {
+	// FIXME revisit after smask cleanup.
+	wival /= blendv(wval.compare_gt(zero), wval, one);
+	wival.storeu(i_out + it);
+	wval.storeu(w_out + it);	
+    }
+};
 
 
 template<typename Tds0>
@@ -316,26 +334,20 @@ struct _wi_downsampler_1d_Dfsm {
 
     constexpr int get_Df() const { return Tds0::Df; }
 
-    inline void downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, const T *w_in, int istride)
+    template<typename Tout>
+    inline void downsample_1d(Tout &out, int nt_out, const T *i_in, const T *w_in, int istride)
     {
 	const int Dt = ds0.get_Dt();
 	
 	simd_t<T,S> wival;
 	simd_t<T,S> wval;
-	simd_t<T,S> zero(0);
-	simd_t<T,S> one(1);
     
 	for (int it = 0; it < nt_out; it += S) {
 	    wival = simd_t<T,S>::zero();
 	    wval = simd_t<T,S>::zero();
 
 	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
-	    
-	    // FIXME revisit after smask cleanup.
-	    wival /= blendv(wval.compare_gt(zero), wval, one);
-	    
-	    wival.storeu(i_out + it);
-	    wval.storeu(w_out + it);
+	    out.put(wival, wval, it);
 	}
     }
 };
@@ -353,15 +365,17 @@ struct _wi_downsampler_1d_Dflg {
     _wi_downsampler_1d_Dflg(const Tds0 &ds0_, int Df_) : ds0(ds0_), Df(Df_) { }
 
     inline int get_Df() const { return Df; }
-    
-    inline void downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, const T *w_in, int istride)
+
+    template<typename Tout>
+    inline void downsample_1d(Tout &out, int nt_out, const T *i_in, const T *w_in, int istride)
     {
 	const int Dt = ds0.get_Dt();
+
+	T *i_out = out.i_out;
+	T *w_out = out.w_out;
 	
 	simd_t<T,S> wival;
 	simd_t<T,S> wval;
-	simd_t<T,S> zero(0);
-	simd_t<T,S> one(1);
 
 	// First pass
 	for (int it = 0; it < nt_out; it += S) {
@@ -397,12 +411,7 @@ struct _wi_downsampler_1d_Dflg {
 	    wval.loadu(w_out + it);
 		
 	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
-	    	    
-	    // FIXME revisit after smask cleanup.
-	    wival /= blendv(wval.compare_gt(zero), wval, one);
-
-	    wival.storeu(i_out + it);
-	    wval.storeu(w_out + it);
+	    out.put(wival, wval, it);
 	}
     }
 };
@@ -411,7 +420,7 @@ struct _wi_downsampler_1d_Dflg {
 // -------------------------------------------------------------------------------------------------
 
 
-template<typename Tds1, typename T = typename Tds1::T>
+template<typename Tds1, typename T = typename Tds1::T, int S = Tds1::S>
 inline void _wi_downsample_2d(Tds1 &ds1, int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride)
 {
     const int Df = ds1.get_Df();
@@ -422,7 +431,9 @@ inline void _wi_downsample_2d(Tds1 &ds1, int nfreq_out, int nt_out, T *out_i, T 
 	const T *in_i2 = in_i + ifreq*Df*istride;
 	const T *in_w2 = in_w + ifreq*Df*istride;
 
-	ds1.downsample_1d(out_i2, out_w2, nt_out, in_i2, in_w2, istride);
+	_wi_downsampler_1d_outbuf<T,S> out(out_i2, out_w2);
+	
+	ds1.downsample_1d(out, nt_out, in_i2, in_w2, istride);
     }    
 }
 
