@@ -1,5 +1,7 @@
 // FIXME: currently, can only spline-detrend in frequency direction!
 
+#include <cstdint>
+
 #ifndef _RF_KERNELS_SPLINE_DETRENDER_HPP
 #define _RF_KERNELS_SPLINE_DETRENDER_HPP
 

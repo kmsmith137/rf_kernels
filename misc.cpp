@@ -1,4 +1,5 @@
 #include <sstream>
+#include <stdexcept>
 #include "rf_kernels/core.hpp"
 
 using namespace std;
