@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/spline_detrender.hpp"
 #include "rf_kernels/spline_detrender_internals.hpp"

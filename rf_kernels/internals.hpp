@@ -1,12 +1,15 @@
+#include <array>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
+#include <iostream>
 #include <stdexcept>
 
 #ifndef _RF_KERNELS_INTERNALS_HPP
 #define _RF_KERNELS_INTERNALS_HPP
 
 #if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
-#error "This source file needs to be compiled with C++0x support (g++ -std=c++0x)"
+#error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
 
 // Branch predictor hint
@@ -59,7 +62,66 @@ inline ssize_t _align(ssize_t nbytes, ssize_t nalign=128)
     return ((nbytes + nalign - 1) / nalign) * nalign;
 }
 
+template<typename T>
+inline T square(T x)
+{
+    return x*x;
+}
+
+// Returns (m/n), in a situation where we want to assert that n evenly divides m.
+inline ssize_t xdiv(ssize_t m, ssize_t n)
+{
+    rf_assert(m >= 0);
+    rf_assert(n > 0);
+    rf_assert(m % n == 0);
+    return m / n;
+}
+
+// Returns (m % n), in a situation where we want to assert that the % operation makes sense
+inline ssize_t xmod(ssize_t m, ssize_t n)
+{
+    rf_assert(m >= 0);
+    rf_assert(n > 0);
+    return m % n;
+}
+
 
 }  // namespace rf_kernels
+
+
+// Hmm, the C++11 standard library doesn't define hash functions for 
+// composite types such as pair<S,T> or array<T,N>.
+//
+// FIXME: Is it kosher to add hash<> specializations to the std:: namespace?
+
+namespace std {
+    template<size_t N, typename H, typename T, typename enable_if<(N==1),int>::type = 0>
+    inline size_t kms_hash(const H &h, const T &t)
+    {
+	return h(t[0]);
+    }
+    
+    template<size_t N, typename H, typename T, typename enable_if<(N>1),int>::type = 0>
+    inline size_t kms_hash(const H &h, const T &t)
+    {
+	size_t h0 = kms_hash<N-1> (h,t);
+	size_t h1 = h(t[N-1]);
+
+	// from boost::hash_combine()
+	h0 ^= (h1 + 0x9e3779b9 + (h0 << 6) + (h0 >> 2));
+	return h0;
+    }
+
+    template<typename T, size_t N>
+    struct hash<array<T,N>>
+    {
+	inline size_t operator()(const array<T,N> &v) const
+	{
+	    hash<T> h;
+	    return kms_hash<N> (h,v);
+	}
+    };
+}
+
 
 #endif  // _RF_KERNELS_INTERNALS_HPP

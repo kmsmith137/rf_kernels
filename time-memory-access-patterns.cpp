@@ -1,8 +1,9 @@
+#include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 
-#include "simd_helpers/simd_float32.hpp"
-#include "simd_helpers/simd_ntuple.hpp"
+#include <simd_helpers/simd_float32.hpp>
+#include <simd_helpers/simd_ntuple.hpp>
 
 #ifdef __AVX__
 constexpr int S = 8;
@@ -26,10 +27,10 @@ inline void throw_away(const simd_t<float,S> &x)
 }
 
 
-template<unsigned int N, typename enable_if<(N==0),int>::type = 0>
+template<int N, typename enable_if<(N==0),int>::type = 0>
 inline void read_ntuple(simd_ntuple<float,S,N> &dst, const float *src, int stride) { }
 
-template<unsigned int N, typename enable_if<(N>0),int>::type = 0>
+template<int N, typename enable_if<(N>0),int>::type = 0>
 inline void read_ntuple(simd_ntuple<float,S,N> &dst, const float *src, int stride)
 {
     read_ntuple(dst.v, src, stride);
@@ -37,10 +38,10 @@ inline void read_ntuple(simd_ntuple<float,S,N> &dst, const float *src, int strid
 }
 
 
-template<unsigned int N, typename enable_if<(N==0),int>::type = 0>
+template<int N, typename enable_if<(N==0),int>::type = 0>
 inline void write_ntuple(float *dst, const simd_ntuple<float,S,N> &src, int stride) { }
 
-template<unsigned int N, typename enable_if<(N>0),int>::type = 0>
+template<int N, typename enable_if<(N>0),int>::type = 0>
 inline void write_ntuple(float *dst, const simd_ntuple<float,S,N> &src, int stride)
 {
     write_ntuple(dst, src.v, stride);
@@ -51,7 +52,7 @@ inline void write_ntuple(float *dst, const simd_ntuple<float,S,N> &src, int stri
 // -------------------------------------------------------------------------------------------------
 
 
-template<unsigned int N>
+template<int N>
 inline void read_rows(int nfreq, int nt_chunk, int stride, const float *src)
 {
     simd_t<float,S> acc(0.0);
@@ -68,7 +69,7 @@ inline void read_rows(int nfreq, int nt_chunk, int stride, const float *src)
 }
 
 
-template<unsigned int N>
+template<int N>
 inline void read_rows_2arr(int nfreq, int nt_chunk, int stride, const float *src1, const float *src2)
 {
     simd_t<float,S> acc(0.0);
@@ -90,7 +91,7 @@ inline void read_rows_2arr(int nfreq, int nt_chunk, int stride, const float *src
 }
 
 
-template<unsigned int N>
+template<int N>
 inline void read_cols(int nfreq, int nt_chunk, int stride, const float *src)
 {
     simd_t<float,S> acc(0.0);
@@ -107,7 +108,7 @@ inline void read_cols(int nfreq, int nt_chunk, int stride, const float *src)
 }
 
 
-template<unsigned int N>
+template<int N>
 inline void update_cols(int nfreq, int nt_chunk, int stride, float *arr)
 {
     simd_t<float,S> one(1.0);
@@ -128,7 +129,7 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 	kernel_timing_thread(pool_, params_)
     { }
 
-    template<unsigned int N>
+    template<int N>
     inline void time_read_rows(const char *str)
     {
 	this->start_timer();
@@ -137,7 +138,7 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 	this->stop_timer2(str);
     }
 
-    template<unsigned int N>
+    template<int N>
     inline void time_read_rows_2arr(const char *str)
     {
 	this->start_timer();
@@ -146,7 +147,7 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 	this->stop_timer2(str);
     }
 
-    template<unsigned int N>
+    template<int N>
     inline void time_read_cols(const char *str)
     {
 	this->start_timer();
@@ -155,7 +156,7 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 	this->stop_timer2(str);
     }
 
-    template<unsigned int N>
+    template<int N>
     inline void time_update_cols(const char *str)
     {
 	this->start_timer();

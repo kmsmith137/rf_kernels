@@ -6,8 +6,10 @@
 #define _RF_KERNELS_SPLINE_DETRENDER_HPP
 
 #if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
-#error "This source file needs to be compiled with C++0x support (g++ -std=c++0x)"
+#error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
+
+#include <cstdint>
 
 namespace rf_kernels {
 #if 0

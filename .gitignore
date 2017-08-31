@@ -5,8 +5,16 @@
 Makefile.local
 unittest_touchfiles
 
+test-downsample
+test-intensity-clipper
 test-online-mask-filler
 test-spline-detrender
+test-std-dev-clipper
+test-upsample
+
+time-downsample
 time-memory-access-patterns
 time-online-mask-filler
+time-polynomial-detrender
 time-spline-detrender
+time-upsample

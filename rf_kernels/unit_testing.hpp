@@ -1,6 +1,8 @@
 #ifndef _RF_KERNELS_UNIT_TESTING_HPP
 #define _RF_KERNELS_UNIT_TESTING_HPP
 
+#include "core.hpp"
+
 #if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
 #endif
@@ -12,6 +14,7 @@
 #include <vector>
 #include <random>
 #include <cassert>
+#include <sstream>
 #include <iostream>
 #include <unistd.h>
 #include <sys/time.h>
@@ -53,6 +56,18 @@ inline std::vector<float> uniform_randvec(std::mt19937 &rng, ssize_t n, double l
 	ret[i] = uniform_rand(rng, lo, hi);
 
     return ret;
+}
+
+inline axis_type random_axis_type(std::mt19937 &rng)
+{
+    int r = randint(rng, 0, 3);
+    
+    if (r == 0)
+	return AXIS_FREQ;
+    else if (r == 1)
+	return AXIS_TIME;
+    else
+	return AXIS_NONE;
 }
 
 
@@ -103,6 +118,22 @@ inline float maxabs(const float *v, ssize_t n)
 inline float maxabs(const std::vector<float> &v)
 {
     return maxabs(&v[0], v.size());
+}
+
+// for debugging: returns string representation of a vector
+template<typename T> inline std::string vstr(const T *buf, int n)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (int i = 0; i < n; i++)
+	ss << " " << buf[i];
+    ss << " ]";
+    return ss.str();
+}
+
+template<typename T> inline std::string vstr(const std::vector<T> &buf)
+{
+    return vstr(&buf[0], buf.size());
 }
 
 

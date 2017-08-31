@@ -1,5 +1,4 @@
 #include <memory>
-#include "xorshift_plus.hpp"
 
 #ifndef _RF_KERNELS_ONLINE_MASK_FILLER_HPP
 #define _RF_KERNELS_ONLINE_MASK_FILLER_HPP
