@@ -190,59 +190,6 @@ inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *
     for (int it = 0; it < N; it += S)
 	_wi_downsample_0a<Df> (wi_acc, w_acc, in_i + it, in_w + it, stride);
 }
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// _wi_downsample_0b<Df,P> (wi_ds, w_ds, intensity, weights, stride)
-// _wi_downsample_0b<Df,P> (wi_ds, w_ds, intensity, weights, stride, Dt)
-//
-// These kernels make the first P calls to wi_ds.put() and w_ds_put().
-// In the first case, Dt <= S is a compile-time parameter, inferred from the types of wi_ds, w_ds.
-// In the second case, Dt is a runtime parameter, and caller must check that Dt is a multiple of S.
-// Note that 0 <= P <= min(Dt,S).
-
-
-// First case: compile-time Dt
-
-template<int Df, int P, typename T, int S, int Dt, typename std::enable_if<(P==0),int>::type = 0>
-inline void _wi_downsample_0b(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride)
-{ }
-
-template<int Df, int P, typename T, int S, int Dt, typename std::enable_if<(P>0),int>::type = 0>
-inline void _wi_downsample_0b(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride)
-{
-    _wi_downsample_0b<Df,P-1> (wi_ds, w_ds, in_i, in_w, stride);
-
-    simd_t<T,S> wi_acc = simd_t<T,S>::zero();
-    simd_t<T,S> w_acc = simd_t<T,S>::zero();
-    _wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
-
-    wi_ds.template put<P-1> (wi_acc);
-    w_ds.template put<P-1> (w_acc);
-}
-
-
-// Second case: runtime Dt, which must be a multiple of S.
-// (Note that the simd_downsamplers are <T,S,S> not <T,S,Dt>)
-
-template<int Df, int P, typename T, int S, typename std::enable_if<(P==0),int>::type = 0>
-inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride, int Dt)
-{ }
-
-template<int Df, int P, typename T, int S, typename std::enable_if<(P>0),int>::type = 0>
-inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride, int Dt)
-{
-    _wi_downsample_0b<Df,P-1> (wi_ds, w_ds, in_i, in_w, stride, Dt);
-
-    simd_t<T,S> wi_acc = simd_t<T,S>::zero();
-    simd_t<T,S> w_acc = simd_t<T,S>::zero();
-    _wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*Dt, in_w + (P-1)*Dt, stride, Dt);
-
-    wi_ds.template put<P-1> (wi_acc);
-    w_ds.template put<P-1> (w_acc);    
-}
-
 			      
 // ----------------------------------------------------------------------------------------------------
 //
@@ -264,11 +211,30 @@ struct _wi_downsampler_0d_Dtsm {
     static constexpr int S = S_;
 
     constexpr int get_Dt() const { return Dt; }
+
+    
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride) const
+    { }
+
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride) const
+    {
+	_get_partial<P-1> (wi_ds, w_ds, in_i, in_w, stride);
+	
+	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
+	simd_t<T,S> w_acc = simd_t<T,S>::zero();
+	_wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
+	
+	wi_ds.template put<P-1> (wi_acc);
+	w_ds.template put<P-1> (w_acc);
+    }
+
     
     inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride) const
     {
 	simd_downsampler<T,S,Dt> wi_ds, w_ds;
-	_wi_downsample_0b<Df,Dt> (wi_ds, w_ds, i_in, w_in, stride);
+	_get_partial<Dt> (wi_ds, w_ds, i_in, w_in, stride);
 
 	wi_out += wi_ds.get();
 	w_out += w_ds.get();
@@ -286,11 +252,30 @@ struct _wi_downsampler_0d_Dtlg
     _wi_downsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
 
     inline int get_Dt() const { return Dt; }
+
+    
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _get_partial(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride) const
+    { }
+    
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _get_partial(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride) const
+    {
+	_get_partial<P-1> (wi_ds, w_ds, in_i, in_w, stride);
+	
+	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
+	simd_t<T,S> w_acc = simd_t<T,S>::zero();
+	_wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*Dt, in_w + (P-1)*Dt, stride, Dt);
+	
+	wi_ds.template put<P-1> (wi_acc);
+	w_ds.template put<P-1> (w_acc);    
+    }
+
     
     inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride) const
     {
 	simd_downsampler<T,S,S> wi_ds, w_ds;
-	_wi_downsample_0b<Df,S> (wi_ds, w_ds, i_in, w_in, stride, Dt);
+	_get_partial<S> (wi_ds, w_ds, i_in, w_in, stride);
 	
 	wi_out += wi_ds.get();
 	w_out += w_ds.get();
