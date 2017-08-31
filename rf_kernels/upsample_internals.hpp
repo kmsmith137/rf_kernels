@@ -55,7 +55,8 @@ inline void _upsample_weights_0a(float *wp, simd_t<float,8> mask, int stride, in
 // _upsample_weights_0b<Df,Dt,P> (float *p, const simd_upsampler<Dt> &mask, int stride)
 // _upsample_weights_0b<Df,P> (float *p, const simd_upsampler<S> &mask, int stride, int Dt)
 //
-// These apply the mask to a shape-(Df,Dt*S) array.
+// These apply the mask to a shape-(Df,Dt*P) array, where P <= S.
+// They are "partial" versions of _upsample_weights_0d(), to be defined next.
 
 
 template<int Df, int Dt, int P, typename std::enable_if<(P==0),int>::type = 0>

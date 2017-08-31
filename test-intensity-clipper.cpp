@@ -150,9 +150,11 @@ static void reference_intensity_clipper(const float *intensity, float *weights, 
 
 static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt, int niter)
 {
+#if 0
     cout << "test_intensity_clipper: nfreq=" << nfreq << ", nt=" << nt 
 	 << ", stride=" << stride << ", axis=" << axis << ", sigma=" << sigma 
 	 << ", Df=" << Df << ", Dt=" << Dt << ", niter=" << niter << endl;
+#endif
 
     vector<float> in_i = uniform_randvec(rng, nfreq * stride, 0.0, 1.0);
     vector<float> in_w = vector<float> (nfreq * stride, 0.0);
