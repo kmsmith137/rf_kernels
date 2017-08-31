@@ -20,6 +20,8 @@ struct online_mask_filler {
 
     explicit online_mask_filler(int nfreq);
 
+    const int nfreq;
+
     // Tunable parameters.
     // Note that the defaults are generally invalid parameter values!
     // This is so we can throw an exception if the caller forgets to initialize them.
@@ -38,11 +40,18 @@ struct online_mask_filler {
     void scalar_mask_fill(int nt_chunk, int stride, float *intensity, float *weights);
 
     // Persistent state, kept between calls to mask_fill().
-    // 'running_var' and 'running_weights' are 1D arrays of length nfreq.
-    const int nfreq;
+    // Each of these is a 1D array of length nfreq.
+    //
+    // Note: chunk_min_weights and chunk_max_weights are an experiment that I
+    // didn't end up using, but they don't slow down the code, so I left them in
+    // for now!  I might remove them eventually...
+
     std::unique_ptr<float[]> running_var;
     std::unique_ptr<float[]> running_weights;
     std::unique_ptr<float[]> running_var_denom;
+    std::unique_ptr<float[]> chunk_min_weight;   // mininum weight in last chunk processed.
+    std::unique_ptr<float[]> chunk_max_weight;   // maximum weight in last chunk processed.
+        
     uint64_t rng_state[8];
     
     // Disallow copying (since we use std::unique_ptr).

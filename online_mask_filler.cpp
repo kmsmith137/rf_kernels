@@ -100,6 +100,8 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
     float *running_var = params.running_var.get();
     float *running_weights = params.running_weights.get();
     float *running_var_denom = params.running_var_denom.get();
+    float *chunk_min_weight = params.chunk_min_weight.get();
+    float *chunk_max_weight = params.chunk_max_weight.get();
     
     // Construct our random number generator object on the stack by initializing from the state kept in bonsai/online_mask_filler.c! 
     vec_xorshift_plus rng(params.rng_state);
@@ -111,6 +113,8 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
       __m256 prev_w = _mm256_set1_ps(running_weights[ifreq]);
       __m256 prev_var = _mm256_set1_ps(running_var[ifreq]);
       __m256 prev_var_den = _mm256_set1_ps(running_var_denom[ifreq]);
+      __m256 min_w = prev_w;
+      __m256 max_w = prev_w;
 
       for (int ichunk=0; ichunk<nt_chunk-1; ichunk += 32)
       {
@@ -135,7 +139,10 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
 	  // We also need to modify the weight values
 	  wt1 = _mm256_max_ps(wt1, prev_w - w_clamp);
 	  wt1 = _mm256_min_ps(wt1, prev_w + w_clamp);
+
 	  prev_w = wt1;
+	  min_w = _mm256_min_ps(min_w, wt1);
+	  max_w = _mm256_max_ps(max_w, wt1);
 
 	  __m256 root_three = _mm256_set1_ps(1.732050808);
 	  __m256 rng_scale = root_three * _mm256_sqrt_ps(prev_var);
@@ -174,6 +181,8 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
       _write_first(&running_var[ifreq], prev_var);
       _write_first(&running_weights[ifreq], prev_w);
       _write_first(&running_var_denom[ifreq], prev_var_den);
+      _write_first(&chunk_min_weight[ifreq], min_w);
+      _write_first(&chunk_max_weight[ifreq], max_w);
     }
 
     // Now that we're done, write out the new state of the random number generator back to the stack!
@@ -184,19 +193,26 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
 // -------------------------------------------------------------------------------------------------
 
 
+// Helper for online_mask_filler constructor
+inline unique_ptr<float[]> zeroed_unique_ptr(ssize_t n)
+{
+    float *p = new float[n];
+    memset(p, 0, n * sizeof(*p));
+    return unique_ptr<float[]> (p);
+}
+
+
 online_mask_filler::online_mask_filler(int nfreq_) :
     nfreq(nfreq_)
 {
     if (nfreq <= 0)
 	throw runtime_error("rf_kernels::online_mask_filler: expected nfreq > 0");
 
-    this->running_var = unique_ptr<float[]> (new float[nfreq]);
-    this->running_weights = unique_ptr<float[]> (new float[nfreq]);
-    this->running_var_denom = unique_ptr<float[]> (new float[nfreq]);
-
-    memset(running_var.get(), 0, nfreq * sizeof(float));
-    memset(running_weights.get(), 0, nfreq * sizeof(float));
-    memset(running_var_denom.get(), 0, nfreq * sizeof(float));
+    this->running_var = zeroed_unique_ptr(nfreq);
+    this->running_weights = zeroed_unique_ptr(nfreq);
+    this->running_var_denom = zeroed_unique_ptr(nfreq);
+    this->chunk_min_weight = zeroed_unique_ptr(nfreq);
+    this->chunk_max_weight = zeroed_unique_ptr(nfreq);
 
     std::random_device rd;
     
