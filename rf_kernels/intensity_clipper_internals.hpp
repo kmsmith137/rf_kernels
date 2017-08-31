@@ -2,6 +2,7 @@
 #define _RF_KERNELS_INTENSITY_CLIPPER_INTERNALS_HPP
 
 #include "downsample_internals.hpp"
+#include "mean_rms_internals.hpp"
 #include "clipper_internals.hpp"
 
 namespace rf_kernels {

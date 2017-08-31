@@ -13,6 +13,7 @@ INCFILES = \
   downsample_internals.hpp \
   intensity_clipper.hpp \
   intensity_clipper_internals.hpp \
+  mean_rms_internals.hpp \
   online_mask_filler.hpp \
   polynomial_detrender.hpp \
   polynomial_detrender_internals.hpp \
@@ -114,6 +115,7 @@ CLIPPER_DEPS = \
   rf_kernels/core.hpp \
   rf_kernels/internals.hpp \
   rf_kernels/downsample_internals.hpp \
+  rf_kernels/mean_rms_internals.hpp \
   rf_kernels/clipper_internals.hpp
 
 

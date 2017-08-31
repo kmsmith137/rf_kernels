@@ -5,6 +5,7 @@
 #include <simd_helpers/simd_float32.hpp>
 
 #include "downsample_internals.hpp"
+#include "mean_rms_internals.hpp"
 #include "clipper_internals.hpp"
 
 namespace rf_kernels {
