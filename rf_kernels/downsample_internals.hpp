@@ -436,6 +436,17 @@ inline void _wi_downsample_2d(int nfreq_out, int nt_out, T *out_i, T *out_w, int
 }
 
 
+template<typename T>
+inline void _wi_downsample_2d_1_1(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df, int Dt)
+{
+    for (int ifreq = 0; ifreq < nfreq_out; ifreq++)
+	memcpy(out_i + ifreq*ostride, in_i + ifreq*istride, nt_out * sizeof(T));
+    
+    for (int ifreq = 0; ifreq < nfreq_out; ifreq++)
+	memcpy(out_w + ifreq*ostride, in_w + ifreq*istride, nt_out * sizeof(T));
+}
+
+
 }  // namespace rf_kernels
 
 #endif  // _RF_KERNELS_DOWNSAMPLE_INTERNALS_HPP

@@ -81,6 +81,11 @@ template<> struct kernel<16,16>
     static kernel_t get() { return _wi_downsample_2d<float,8>; }
 };
 
+template<> struct kernel<1,1>
+{
+    static kernel_t get() { return _wi_downsample_2d_1_1<float>; }
+};
+
 
 template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
 inline void _populate1() { }
