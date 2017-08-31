@@ -7,6 +7,7 @@
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/downsample_internals.hpp"
+#include "rf_kernels/mean_rms_internals.hpp"
 #include "rf_kernels/clipper_internals.hpp"
 #include "rf_kernels/std_dev_clipper_internals.hpp"
 #include "rf_kernels/std_dev_clipper.hpp"
@@ -128,7 +129,7 @@ inline void _populate2()
 }
 
 struct _initializer {
-    _initializer() { _populate2<16,16>(); }
+    _initializer() { _populate2<256,32>(); }
 } _init;
 
 

@@ -42,6 +42,7 @@ TESTBINFILES = \
   test-downsample \
   test-intensity-clipper \
   test-online-mask-filler \
+  test-polynomial-detrender \
   test-spline-detrender \
   test-std-dev-clipper \
   test-upsample
@@ -165,6 +166,9 @@ test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/int
 test-online-mask-filler.o: test-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
+test-polynomial-detrender.o: test-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
+	$(CPP) -c -o $@ $<
+
 test-spline-detrender.o: test-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
@@ -182,6 +186,9 @@ test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-polynomial-detrender: test-polynomial-detrender.o polynomial_detrender.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-spline-detrender: test-spline-detrender.o spline_detrender.o
