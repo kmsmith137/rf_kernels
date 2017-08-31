@@ -13,6 +13,7 @@ INCFILES = \
   downsample_internals.hpp \
   intensity_clipper.hpp \
   intensity_clipper_internals.hpp \
+  mean_rms.hpp \
   mean_rms_internals.hpp \
   online_mask_filler.hpp \
   polynomial_detrender.hpp \
@@ -29,6 +30,7 @@ INCFILES = \
 OFILES = \
   downsample.o \
   intensity_clipper.o \
+  mean_rms.o \
   misc.o \
   online_mask_filler.o \
   polynomial_detrender.o \
@@ -123,6 +125,9 @@ downsample.o: downsample.cpp $(CORE_DEPS) rf_kernels/downsample.hpp rf_kernels/d
 	$(CPP) -c -o $@ $<
 
 intensity_clipper.o: intensity_clipper.cpp $(CLIPPER_DEPS) rf_kernels/intensity_clipper_internals.hpp rf_kernels/intensity_clipper.hpp
+	$(CPP) -c -o $@ $<
+
+mean_rms.o: mean_rms.cpp $(CORE_DEPS) rf_kernels/mean_rms_internals.hpp rf_kernels/mean_rms.hpp
 	$(CPP) -c -o $@ $<
 
 misc.o: misc.cpp $(CORE_DEPS)
