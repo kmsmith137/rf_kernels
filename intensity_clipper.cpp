@@ -81,7 +81,7 @@ inline void _populate2()
 
 
 struct _initializer {
-    _initializer() { _populate2<256,32>(); }
+    _initializer() { _populate2<16,16>(); }
 } _init;
 
 }  // namespace intensity_clipper_kernel_table
