@@ -246,8 +246,8 @@ inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T
 			      
 // ----------------------------------------------------------------------------------------------------
 //
-// _wi_downsample_0d<Df,Dt> (wi_out, w_out, intensity, weights, stride)
-// _wi_downsample_0d<Df> (wi_out, w_out, intensity, weights, stride, Dt)
+// _wi_downsampler_0d_Dtsm<T,S,Df,Dt>::get(wi_out, w_out, intensity, weights, stride, Dt)
+// _wi_downsampler_0d_Dtlg<T,S,Df>::get(wi_out, w_out, intensity, weights, stride, Dt)
 //
 // These ingest shape-(Df,Dt*S) intensity and weights arrays, downsample, and
 // output length-S intensity and weights vectors.
@@ -258,26 +258,44 @@ inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T
 // NOTE: they now accumulate their output!
 
 
-template<int Df, int Dt, typename T, int S>
-inline void _wi_downsample_0d(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride)
-{
-    simd_downsampler<T,S,Dt> wi_ds, w_ds;
-    _wi_downsample_0b<Df,Dt> (wi_ds, w_ds, i_in, w_in, stride);
+template<typename T_, int S_, int Df, int Dt>
+struct _wi_downsampler_0d_Dtsm {
+    using T = T_;
+    static constexpr int S = S_;
 
-    wi_out += wi_ds.get();
-    w_out += w_ds.get();
-}
-	
-
-template<int Df, typename T, int S>
-inline void _wi_downsample_0d(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride, int Dt)
-{
-    simd_downsampler<T,S,S> wi_ds, w_ds;
-    _wi_downsample_0b<Df,S> (wi_ds, w_ds, i_in, w_in, stride, Dt);
+    constexpr int get_Dt() const { return Dt; }
     
-    wi_out += wi_ds.get();
-    w_out += w_ds.get();
-}
+    inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride) const
+    {
+	simd_downsampler<T,S,Dt> wi_ds, w_ds;
+	_wi_downsample_0b<Df,Dt> (wi_ds, w_ds, i_in, w_in, stride);
+
+	wi_out += wi_ds.get();
+	w_out += w_ds.get();
+    }
+};
+
+
+template<typename T_, int S_, int Df>
+struct _wi_downsampler_0d_Dtlg
+{
+    using T = T_;
+    static constexpr int S = S_;
+    
+    const int Dt;
+    _wi_downsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
+
+    inline int get_Dt() const { return Dt; }
+    
+    inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride) const
+    {
+	simd_downsampler<T,S,S> wi_ds, w_ds;
+	_wi_downsample_0b<Df,S> (wi_ds, w_ds, i_in, w_in, stride, Dt);
+	
+	wi_out += wi_ds.get();
+	w_out += w_ds.get();
+    }
+};
 
 
 // -------------------------------------------------------------------------------------------------
@@ -300,9 +318,11 @@ inline void _wi_downsample_0d(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *
 // FIXME there is a lot of cut-and-paste between these two kernels, can this be improved?
 
 
-template<typename T, int S, int Df, int Dt, bool Iflag=true, bool Fflag=true>
-inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, const T *w_in, int istride)
+template<bool Iflag=true, bool Fflag=true, typename Tds, typename T=typename Tds::T, int S=Tds::S>
+inline void _wi_downsample_1d(Tds &ds, T *i_out, T *w_out, int nt_out, const T *i_in, const T *w_in, int istride)
 {
+    const int Dt = ds.get_Dt();
+	
     simd_t<T,S> wival;
     simd_t<T,S> wval;
     simd_t<T,S> zero(0);
@@ -318,7 +338,7 @@ inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, con
 	    wval.loadu(w_out + it);
 	}
 
-	_wi_downsample_0d<Df,Dt> (wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	ds.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
 
 	// FIXME revisit after smask cleanup.
 	if (Fflag)
@@ -329,35 +349,6 @@ inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, con
     }
 }
 
-
-template<typename T, int S, int Df, bool Iflag=true, bool Fflag=true>
-inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, const T *w_in, int istride, int Dt)
-{
-    simd_t<T,S> wival;
-    simd_t<T,S> wval;
-    simd_t<T,S> zero(0);
-    simd_t<T,S> one(1);
-    
-    for (int it = 0; it < nt_out; it += S) {
-	if (Iflag) {
-	    wival = simd_t<T,S>::zero();
-	    wval = simd_t<T,S>::zero();
-	}
-	else {
-	    wival.loadu(i_out + it);
-	    wval.loadu(w_out + it);
-	}
-
-	_wi_downsample_0d<Df> (wival, wval, i_in + it*Dt, w_in + it*Dt, istride, Dt);
-
-	// FIXME revisit after smask cleanup.
-	if (Fflag)
-	    wival /= blendv(wval.compare_gt(zero), wval, one);
-
-	wival.storeu(i_out + it);
-	wval.storeu(w_out + it);
-    }
-}
 
 
 // -------------------------------------------------------------------------------------------------
@@ -373,13 +364,15 @@ inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, con
 template<typename T, int S, int Df, int Dt>
 inline void _wi_downsample_2d_Df_Dt(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df_, int Dt_)
 {
+    _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds;
+    
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++) {
 	T *out_i2 = out_i + ifreq*ostride;
 	T *out_w2 = out_w + ifreq*ostride;
 	const T *in_i2 = in_i + ifreq*Df*istride;
 	const T *in_w2 = in_w + ifreq*Df*istride;
 	
-	_wi_downsample_1d<T,S,Df,Dt> (out_i2, out_w2, nt_out, in_i2, in_w2, istride);
+	_wi_downsample_1d(ds, out_i2, out_w2, nt_out, in_i2, in_w2, istride);
     }
 }
 
@@ -387,13 +380,15 @@ inline void _wi_downsample_2d_Df_Dt(int nfreq_out, int nt_out, T *out_i, T *out_
 template<typename T, int S, int Df>
 inline void _wi_downsample_2d_Df(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df_, int Dt)
 {
+    _wi_downsampler_0d_Dtlg<T,S,Df> ds(Dt);
+	
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++) {
 	T *out_i2 = out_i + ifreq*ostride;
 	T *out_w2 = out_w + ifreq*ostride;
 	const T *in_i2 = in_i + ifreq*Df*istride;
 	const T *in_w2 = in_w + ifreq*Df*istride;
 	
-	_wi_downsample_1d<T,S,Df> (out_i2, out_w2, nt_out, in_i2, in_w2, istride, Dt);
+	_wi_downsample_1d(ds, out_i2, out_w2, nt_out, in_i2, in_w2, istride);
     }
 }
 
@@ -401,18 +396,20 @@ inline void _wi_downsample_2d_Df(int nfreq_out, int nt_out, T *out_i, T *out_w, 
 template<typename T, int S, int Dt>
 inline void _wi_downsample_2d_Dt(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df, int Dt_)
 {
+    _wi_downsampler_0d_Dtsm<T,S,S,Dt> ds;
+    
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++) {
 	T *out_i2 = out_i + ifreq*ostride;
 	T *out_w2 = out_w + ifreq*ostride;
 	const T *in_i2 = in_i + ifreq*Df*istride;
 	const T *in_w2 = in_w + ifreq*Df*istride;
 
-	_wi_downsample_1d<T,S,S,Dt,true,false> (out_i2, out_w2, nt_out, in_i2, in_w2, istride);
+	_wi_downsample_1d<true,false> (ds, out_i2, out_w2, nt_out, in_i2, in_w2, istride);
 
 	for (int i = S; i < (Df-S); i += S)
-	    _wi_downsample_1d<T,S,S,Dt,false,false> (out_i2, out_w2, nt_out, in_i2 + i*istride, in_w2 + i*istride, istride);
+	    _wi_downsample_1d<false,false> (ds, out_i2, out_w2, nt_out, in_i2 + i*istride, in_w2 + i*istride, istride);
 	
-	_wi_downsample_1d<T,S,S,Dt,false,true> (out_i2, out_w2, nt_out, in_i2 + (Df-S)*istride, in_w2 + (Df-S)*istride, istride);
+	_wi_downsample_1d<false,true> (ds, out_i2, out_w2, nt_out, in_i2 + (Df-S)*istride, in_w2 + (Df-S)*istride, istride);
     }
 }
 
@@ -420,18 +417,20 @@ inline void _wi_downsample_2d_Dt(int nfreq_out, int nt_out, T *out_i, T *out_w, 
 template<typename T, int S>
 inline void _wi_downsample_2d(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df, int Dt)
 {
+    _wi_downsampler_0d_Dtlg<T,S,S> ds(Dt);
+    
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++) {
 	T *out_i2 = out_i + ifreq*ostride;
 	T *out_w2 = out_w + ifreq*ostride;
 	const T *in_i2 = in_i + ifreq*Df*istride;
 	const T *in_w2 = in_w + ifreq*Df*istride;
-	
-	_wi_downsample_1d<T,S,S,true,false> (out_i2, out_w2, nt_out, in_i2, in_w2, istride, Dt);
+
+	_wi_downsample_1d<true,false> (ds, out_i2, out_w2, nt_out, in_i2, in_w2, istride);
 
 	for (int i = S; i < (Df-S); i += S)
-	    _wi_downsample_1d<T,S,S,false,false> (out_i2, out_w2, nt_out, in_i2 + i*istride, in_w2 + i*istride, istride, Dt);
+	    _wi_downsample_1d<false,false> (ds, out_i2, out_w2, nt_out, in_i2 + i*istride, in_w2 + i*istride, istride);
 	
-	_wi_downsample_1d<T,S,S,false,true> (out_i2, out_w2, nt_out, in_i2 + (Df-S)*istride, in_w2 + (Df-S)*istride, istride, Dt);
+	_wi_downsample_1d<false,true> (ds, out_i2, out_w2, nt_out, in_i2 + (Df-S)*istride, in_w2 + (Df-S)*istride, istride);
     }
 }
 
