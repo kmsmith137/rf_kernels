@@ -40,6 +40,18 @@ inline void _no_kernel(int Df, int Dt)
 
 inline kernel_t get_kernel(int Df, int Dt)
 {
+    if (Df > 8) {
+	if (_unlikely(Df % 8 != 0))
+	    _no_kernel(Df,Dt);
+	Df = 16;
+    }
+
+    if (Dt > 8) {
+	if (_unlikely(Dt % 8 != 0))
+	    _no_kernel(Df,Dt);
+	Dt = 16;
+    }
+
     auto p = kernel_table.find({{Df,Dt}});
     
     if (_unlikely(p == kernel_table.end()))
@@ -49,13 +61,26 @@ inline kernel_t get_kernel(int Df, int Dt)
 }
 
 
-// FIXME this wrapper will go away soon
-template<int Df, int Dt>
-inline void kernel_wi_downsample_Df_Dt(int nfreq_out, int nt_out, float *out_i, float *out_w, int ostride,
-				       const float *in_i, const float *in_w, int istride, int Df_, int Dt_)
+template<int Df, int Dt> struct kernel
 {
-    _kernel_downsample_2d<float,8,Df,Dt> (out_i, out_w, ostride, in_i, in_w, nfreq_out * Df, nt_out * Dt, istride);
-}
+    static kernel_t get() { return _wi_downsample_2d_Df_Dt<float,8,Df,Dt>; }
+};
+
+template<int Df> struct kernel<Df,16>
+{
+    static kernel_t get() { return _wi_downsample_2d_Df<float,8,Df>; }
+};
+
+template<int Dt> struct kernel<16,Dt>
+{
+    static kernel_t get() { return _wi_downsample_2d_Dt<float,8,Dt>; }
+};
+
+template<> struct kernel<16,16>
+{
+    static kernel_t get() { return _wi_downsample_2d<float,8>; }
+};
+
 
 template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
 inline void _populate1() { }
@@ -64,7 +89,7 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
-    kernel_table[{{Df,Dt}}] = kernel_wi_downsample_Df_Dt<Df,Dt>;
+    kernel_table[{{Df,Dt}}] = kernel<Df,Dt>::get();
 }
 
 
@@ -81,7 +106,7 @@ inline void _populate2()
 
 
 struct _initializer {
-    _initializer() { _populate2<256,32>(); }
+    _initializer() { _populate2<16,16>(); }
 } _init;
 
 

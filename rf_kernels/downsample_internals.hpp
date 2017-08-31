@@ -172,7 +172,7 @@ template<int Df, typename T, int S, typename std::enable_if<(Df==0),int>::type =
 inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
 { }
 
-template<int Df, typename T, int S, typename std::enable_if<(Df>1),int>::type = 0>
+template<int Df, typename T, int S, typename std::enable_if<(Df>0),int>::type = 0>
 inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
 {
     _wi_downsample_0a<Df-1> (wi_acc, w_acc, in_i, in_w, stride);
@@ -214,8 +214,8 @@ inline void _wi_downsample_0b(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<
 {
     _wi_downsample_0b<Df,P-1> (wi_ds, w_ds, in_i, in_w, stride);
 
-    simd_t<T,S> wi_acc = simd_t<T,S>::setzero();
-    simd_t<T,S> w_acc = simd_t<T,S>::setzero();
+    simd_t<T,S> wi_acc = simd_t<T,S>::zero();
+    simd_t<T,S> w_acc = simd_t<T,S>::zero();
     _wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
 
     wi_ds.template put<P-1> (wi_acc);
@@ -233,10 +233,10 @@ inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T
 template<int Df, int P, typename T, int S, typename std::enable_if<(P>0),int>::type = 0>
 inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride, int Dt)
 {
-    _wi_downsample_0b<Df,P-1> (wi_ds, w_ds, in_i, in_w, stride);
+    _wi_downsample_0b<Df,P-1> (wi_ds, w_ds, in_i, in_w, stride, Dt);
 
-    simd_t<T,S> wi_acc = simd_t<T,S>::setzero();
-    simd_t<T,S> w_acc = simd_t<T,S>::setzero();
+    simd_t<T,S> wi_acc = simd_t<T,S>::zero();
+    simd_t<T,S> w_acc = simd_t<T,S>::zero();
     _wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*Dt, in_w + (P-1)*Dt, stride, Dt);
 
     wi_ds.template put<P-1> (wi_acc);
@@ -254,6 +254,8 @@ inline void _wi_downsample_0b(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T
 //
 // In the first case, Dt is a compile-time parameter, and Dt <= S.
 // In the second case, Dt is a runtime parameter, and Dt is a multiple of S.
+//
+// NOTE: they now accumulate their output!
 
 
 template<int Df, int Dt, typename T, int S>
@@ -262,8 +264,8 @@ inline void _wi_downsample_0d(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *
     simd_downsampler<T,S,Dt> wi_ds, w_ds;
     _wi_downsample_0b<Df,Dt> (wi_ds, w_ds, i_in, w_in, stride);
 
-    wi_out = wi_ds.get();
-    w_out = w_ds.get();
+    wi_out += wi_ds.get();
+    w_out += w_ds.get();
 }
 	
 
@@ -271,10 +273,10 @@ template<int Df, typename T, int S>
 inline void _wi_downsample_0d(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride, int Dt)
 {
     simd_downsampler<T,S,S> wi_ds, w_ds;
-    _wi_downsample_0b<Df> (wi_ds, w_ds, i_in, w_in, stride, Dt);
+    _wi_downsample_0b<Df,S> (wi_ds, w_ds, i_in, w_in, stride, Dt);
     
-    wi_out = wi_ds.get();
-    w_out = w_ds.get();
+    wi_out += wi_ds.get();
+    w_out += w_ds.get();
 }
 
 
@@ -308,8 +310,8 @@ inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, con
     
     for (int it = 0; it < nt_out; it += S) {
 	if (Iflag) {
-	    wival = simd_t<T,S>::setzero();
-	    wval = simd_t<T,S>::setzero();
+	    wival = simd_t<T,S>::zero();
+	    wval = simd_t<T,S>::zero();
 	}
 	else {
 	    wival.loadu(i_out + it);
@@ -338,8 +340,8 @@ inline void _wi_downsample_1d(T *i_out, T *w_out, int nt_out, const T *i_in, con
     
     for (int it = 0; it < nt_out; it += S) {
 	if (Iflag) {
-	    wival = simd_t<T,S>::setzero();
-	    wval = simd_t<T,S>::setzero();
+	    wival = simd_t<T,S>::zero();
+	    wval = simd_t<T,S>::zero();
 	}
 	else {
 	    wival.loadu(i_out + it);
@@ -407,7 +409,7 @@ inline void _wi_downsample_2d_Dt(int nfreq_out, int nt_out, T *out_i, T *out_w, 
 
 	_wi_downsample_1d<T,S,S,Dt,true,false> (out_i2, out_w2, nt_out, in_i2, in_w2, istride);
 
-	for (int i = S; i < (Df-S); i++)
+	for (int i = S; i < (Df-S); i += S)
 	    _wi_downsample_1d<T,S,S,Dt,false,false> (out_i2, out_w2, nt_out, in_i2 + i*istride, in_w2 + i*istride, istride);
 	
 	_wi_downsample_1d<T,S,S,Dt,false,true> (out_i2, out_w2, nt_out, in_i2 + (Df-S)*istride, in_w2 + (Df-S)*istride, istride);
@@ -426,7 +428,7 @@ inline void _wi_downsample_2d(int nfreq_out, int nt_out, T *out_i, T *out_w, int
 	
 	_wi_downsample_1d<T,S,S,true,false> (out_i2, out_w2, nt_out, in_i2, in_w2, istride, Dt);
 
-	for (int i = S; i < (Df-S); i++)
+	for (int i = S; i < (Df-S); i += S)
 	    _wi_downsample_1d<T,S,S,false,false> (out_i2, out_w2, nt_out, in_i2 + i*istride, in_w2 + i*istride, istride, Dt);
 	
 	_wi_downsample_1d<T,S,S,false,true> (out_i2, out_w2, nt_out, in_i2 + (Df-S)*istride, in_w2 + (Df-S)*istride, istride, Dt);
