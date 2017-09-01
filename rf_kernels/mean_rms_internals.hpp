@@ -601,6 +601,68 @@ inline void _kernel_wrms_iterate_1d_f(simd_t<T,S> &mean, simd_t<T,S> &rms, const
     }
 }
 
+
+//=================================================================================================
+//=================================================================================================
+//=================================================================================================
+//=================================================================================================
+
+
+// -------------------------------------------------------------------------------------------------
+//
+// Usage: kernel(out_mean, nfreq, nt, in_i, in_w, istride, Df, Dt, niter, sigma, tmp_i, tmp_w)
+
+
+template<typename T, int S>
+struct _wrms_1d_outbuf {
+    T *i_out;
+    T *w_out;
+    
+    simd_t<T,S> wisum = 0;
+    simd_t<T,S> wsum = 0;
+
+    _wrms_1d_outbuf(T *i_out_, T *w_out_) : i_out(i_out_), w_out(w_out_) { }
+
+    const simd_t<T,S> zero = 0;
+    const simd_t<T,S> one = 1;
+
+    inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
+    {
+	wisum += wival;
+	wsum += wval;
+	
+	// FIXME revisit after smask cleanup.
+	wival /= blendv(wval.compare_gt(zero), wval, one);
+	wival.storeu(i_out + it);
+	wval.storeu(w_out + it);	
+    }
+};
+
+
+template<typename T, int S, int Df, int Dt>
+inline void kernel_wrms_Dfsm_Dtsm(T *out_mean, int nfreq_ds, int nt_ds, const T *in_i, const T *in_w,
+				  int istride, int Df_, int Dt_, int niter, T sigma, T *tmp_i, T *tmp_w)
+{
+    _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
+    _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
+
+    for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
+	T *out_i2 = tmp_i + ifreq * nt_ds;
+	T *out_w2 = tmp_w + ifreq * nt_ds;
+	const T *in_i2 = in_i + ifreq * Df * istride;
+	const T *in_w2 = in_w + ifreq * Df * istride;
+
+	_wrms_1d_outbuf<T,S> out(out_i2, out_w2);
+	
+	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, istride);
+
+	float wisum = out.wisum.sum();
+	float wsum = out.wsum.sum();
+	out_mean[ifreq] = (wsum > 0.0) ? (wisum/wsum) : 0.0;
+    }
+}
+
+
 }  // namespace rf_kernels
 
 #endif  // _RF_KERNELS_MEAN_RMS_INTERNALS_HPP

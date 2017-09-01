@@ -19,14 +19,35 @@ namespace rf_kernels {
 struct weighted_mean_rms {
     const int nfreq;
     const int nt_chunk;
+    const axis_type axis;
+    const int Df;
+    const int Dt;
     
     const int niter;
     const double sigma;
     const bool two_pass;
 
-    weighted_mean_rms(int nfreq, int nt_chunk, int niter=1, double sigma=0, bool two_pass=true);
+    weighted_mean_rms(int nfreq, int nt_chunk, axis_type axis=AXIS_NONE, int Df=1,
+		      int Dt=1, int niter=1, double sigma=0, bool two_pass=true);
 
-    void compute_wrms(float &mean, float &rms, const float *intensity, const float *weights, int stride);
+    ~weighted_mean_rms();
+    
+    void compute_wrms(const float *intensity, const float *weights, int stride);
+
+    // Function pointer to low-level kernel.
+    void (*_f)(float *, int, int, const float *, const float *, int, int, int, int, float, float *, float *) = nullptr;
+
+    int nfreq_ds = 0;
+    int nt_ds = 0;
+    int nout = 0;
+    
+    float *out_mean = nullptr;
+    float *tmp_i = nullptr;  // shape (nfreq/Df, nt/Dt)
+    float *tmp_w = nullptr;  // shape (nfreq/Df, nt/Dt)
+
+    // Disallow copying, since we use bare pointers managed with malloc/free.
+    weighted_mean_rms(const weighted_mean_rms &) = delete;
+    weighted_mean_rms& operator=(const weighted_mean_rms &) = delete;
 };
 
 

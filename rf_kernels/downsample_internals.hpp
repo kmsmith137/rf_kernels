@@ -310,8 +310,8 @@ struct _wi_downsampler_1d_outbuf {
 
     _wi_downsampler_1d_outbuf(T *i_out_, T *w_out_) : i_out(i_out_), w_out(w_out_) { }
     
-    simd_t<T,S> zero = 0;
-    simd_t<T,S> one = 1;
+    const simd_t<T,S> zero = 0;
+    const simd_t<T,S> one = 1;
 
     inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
     {
