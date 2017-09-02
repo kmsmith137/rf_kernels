@@ -129,8 +129,9 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
     // FIXME: the details of this logic are opaque and depend on chasing through rf_kernels/*.hpp!
     // It would be nice to have comments in these files which make it more transparent.
 
-    if ((Df==1) && (Dt==1))
-	return;   // no allocation necessary
+    // FIXME revisit this.
+    // if ((Df==1) && (Dt==1))
+    //return;   // no allocation necessary
 
     int nds = 0;
 

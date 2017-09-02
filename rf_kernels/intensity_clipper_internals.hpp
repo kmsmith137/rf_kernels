@@ -224,12 +224,10 @@ inline void kernel_iclip_Dfsm_Dtsm(const intensity_clipper *ic, const T *in_i, T
     _weight_upsampler_0d_Dtsm<T,S,Df,Dt> us0;
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	T *out_i2 = tmp_i + ifreq_ds * nt_ds;
-	T *out_w2 = tmp_w + ifreq_ds * nt_ds;
 	const T *in_i2 = in_i + ifreq_ds * Df * stride;
-	const T *in_w2 = in_w + ifreq_ds * Df * stride;
+	T *in_w2 = in_w + ifreq_ds * Df * stride;
 
-	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds, iter_sigma);
+	_wrms_1d_outbuf<T,S> out(tmp_i, tmp_w, nt_ds, iter_sigma);
 	
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
 	out.end_row();
@@ -237,10 +235,10 @@ inline void kernel_iclip_Dfsm_Dtsm(const intensity_clipper *ic, const T *in_i, T
 	// (niter-1) iterations
 	for (int iter = 1; iter < niter; iter++)
 	    out.iterate();
-       
+	
 	for (int it = 0; it < nt_ds; it += S) {
 	    simd_t<T,S> mask = out.get_mask(it);
-	    us0.put_mask(out_w2, stride, mask);
+	    us0.put_mask(in_w2 + it*Dt, stride, mask);
 	}
     }
 }
