@@ -24,8 +24,8 @@ namespace upsampling_kernel_table {
 #endif
 
 
-// Usage: kernel(nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff, Df, Dt)
-using kernel_t = void (*)(int, int, float *, int, const float *, int, float, int, int);
+// Usage: kernel(wp, nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff)
+using kernel_t = void (*)(const weight_upsampler *, int, int, float *, int, const float *, int, float);
 
 static unordered_map<array<int,2>, kernel_t> kernel_table;   // (Df,Dt) -> kernel
 
@@ -63,22 +63,22 @@ inline kernel_t get_kernel(int Df, int Dt)
 
 template<int Df, int Dt> struct kernel
 {
-    static kernel_t get() { return kernel_upsample_weights_Df_Dt<Df,Dt>; }
+    static kernel_t get() { return kernel_upsample_weights_Dfsm_Dtsm<float,8,Df,Dt>; }
 };
 
 template<int Df> struct kernel<Df,16>
 {
-    static kernel_t get() { return kernel_upsample_weights_Df<Df>; }
+    static kernel_t get() { return kernel_upsample_weights_Dfsm_Dtlg<float,8,Df>; }
 };
 
 template<int Dt> struct kernel<16,Dt>
 {
-    static kernel_t get() { return kernel_upsample_weights_Dt<Dt>; }
+    static kernel_t get() { return kernel_upsample_weights_Dflg_Dtsm<float,8,Dt>; }
 };
 
 template<> struct kernel<16,16>
 {
-    static kernel_t get() { return kernel_upsample_weights; }
+    static kernel_t get() { return kernel_upsample_weights_Dflg_Dtlg<float,8>; }
 };
 
 
@@ -140,7 +140,7 @@ void weight_upsampler::upsample(int nfreq_in, int nt_in, float *out, int ostride
     if (_unlikely(w_cutoff < 0.0))
 	throw runtime_error("rf_kernels::weighted_upsampler: expected w_cutoff >= 0");
 
-    this->_f(nfreq_in, nt_in, out, ostride, in, istride, w_cutoff, this->Df, this->Dt);
+    this->_f(this, nfreq_in, nt_in, out, ostride, in, istride, w_cutoff);
 }
 
 

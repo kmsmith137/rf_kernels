@@ -20,7 +20,7 @@ struct weight_upsampler {
     void upsample(int nfreq_in, int nt_in, float *out, int ostride, const float *in, int istride, float w_cutoff=0.0);
     
     // Function pointer to low-level kernel
-    void (*_f)(int, int, float *, int, const float *, int, float, int, int) = nullptr;
+    void (*_f)(const weight_upsampler *wp, int, int, float *, int, const float *, int, float) = nullptr;
 };
 
 
