@@ -17,26 +17,27 @@ struct intensity_clipper_timing_thread : public kernel_timing_thread {
     {
 	this->allocate();
 
+	// Note: 'ic_niter' is the number of clipper iterations; this->niter is the number of "outer" timing iterations!
 	for (int Df: { 1, 2, 4, 8, 16, 64, 256 }) {
 	    for (int Dt: { 1, 2, 4, 8, 16 }) {
 		for (axis_type axis: { AXIS_FREQ, AXIS_TIME, AXIS_NONE })  {
-		    for (int niter: {1,4}) {
+		    for (int ic_niter: {1,4}) {
 			for (bool two_pass: {false,true}) {
-			    if ((niter > 1) && !two_pass)
+			    if ((ic_niter > 1) && !two_pass)
 				continue;  // don't bother timing this case.
 			    
 			    stringstream ss;
-			    ss << "intensity_clipper(axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",two_pass=" << two_pass << ")";
+			    ss << "intensity_clipper(axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << ic_niter << ",two_pass=" << two_pass << ")";
 			    
 			    string s = ss.str();
 			    const char *cp = s.c_str();
 			    
 			    // Use a huge 'sigma', since we iterate the clipper many times in the loop below.
-			    intensity_clipper ic(nfreq, nt_chunk, axis, 10.0, Df, Dt, niter, 0, two_pass);
+			    intensity_clipper ic(nfreq, nt_chunk, axis, 10.0, Df, Dt, ic_niter, 0, two_pass);
 			    
 			    this->start_timer();
 			    
-			    for (int iter = 0; iter < niter; iter++)
+			    for (int iter = 0; iter < this->niter; iter++)
 				ic.clip(intensity, weights, stride);
 			    
 			    this->stop_timer2(cp);
