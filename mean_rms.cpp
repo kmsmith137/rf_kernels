@@ -104,7 +104,7 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
     rf_assert(two_pass == true);
     
     this->nfreq_ds = xdiv(nfreq, Df);
-    this->nt_ds = xdiv(nt_chunk, Df);
+    this->nt_ds = xdiv(nt_chunk, Dt);
     this->nout = nfreq_ds;
 
     this->out_mean = aligned_alloc<float> (nout);

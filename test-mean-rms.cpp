@@ -54,7 +54,7 @@ static void test_weighted_mean_rms(std::mt19937 &rng, int nfreq, int nt_chunk, i
 
     // Step 2: compute wrms (AXIS_TIME assumed)
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++)
-	reference_weighted_mean(mean[ifreq_ds], &i_ds[0], &w_ds[0], nt_ds, 1);
+	reference_weighted_mean(mean[ifreq_ds], &i_ds[ifreq_ds*nt_ds], &w_ds[ifreq_ds*nt_ds], nt_ds, 1);
 
     // Now compare fast vs reference
     
