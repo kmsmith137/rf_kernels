@@ -41,7 +41,6 @@ OFILES = \
 TESTBINFILES = \
   test-downsample \
   test-intensity-clipper \
-  test-mean-rms \
   test-online-mask-filler \
   test-polynomial-detrender \
   test-spline-detrender \
@@ -158,9 +157,6 @@ test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp
 test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/downsample.hpp rf_kernels/mean_rms.hpp rf_kernels/intensity_clipper.hpp
 	$(CPP) -c -o $@ $<
 
-test-mean-rms.o: test-mean-rms.cpp $(TEST_DEPS) rf_kernels/mean_rms.hpp rf_kernels/downsample.hpp
-	$(CPP) -c -o $@ $<
-
 test-online-mask-filler.o: test-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
@@ -181,9 +177,6 @@ test-downsample: test-downsample.o downsample.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o upsample.o downsample.o mean_rms.o misc.o
-	$(CPP) $(CPP_LFLAGS) -o $@ $^
-
-test-mean-rms: test-mean-rms.o mean_rms.o downsample.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
