@@ -685,6 +685,8 @@ struct _wrms_1d_outbuf {
     inline simd_t<T,S> get_mask(int it)
     {
 	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
+	ival -= mean;
+
 	simd_t<T,S> valid = (ival.abs() <= thresh);
 	return valid;
     }
