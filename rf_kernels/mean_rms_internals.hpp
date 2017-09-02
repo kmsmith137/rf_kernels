@@ -618,11 +618,16 @@ template<typename T, int S>
 struct _wrms_1d_outbuf {
     T *i_out;
     T *w_out;
+    const int nds_t;
     
     simd_t<T,S> wisum = 0;
     simd_t<T,S> wsum = 0;
+    
+    simd_t<T,S> wsum_reg;
+    simd_t<T,S> mean;
+    simd_t<T,S> rms;
 
-    _wrms_1d_outbuf(T *i_out_, T *w_out_) : i_out(i_out_), w_out(w_out_) { }
+    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_) : i_out(i_out_), w_out(w_out_), nds_t(nds_t_) { }
 
     const simd_t<T,S> zero = 0;
     const simd_t<T,S> one = 1;
@@ -637,6 +642,28 @@ struct _wrms_1d_outbuf {
 	wival.storeu(i_out + it);
 	wval.storeu(w_out + it);	
     }
+
+    inline void end_row()
+    {
+	wisum = wisum.horizontal_sum();
+	wsum = wsum.horizontal_sum();
+	wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+
+	mean = wisum / wsum_reg;
+	rms = zero;
+
+	// Second pass to compute rms!
+	for (int it = 0; it < nds_t; it += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
+	    
+	    ival -= mean;
+	    rms += wval * ival * ival;
+	}
+
+	rms = rms.horizontal_sum() / wsum_reg;
+	rms = rms.sqrt();
+    }
 };
 
 
@@ -648,6 +675,7 @@ inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, co
     float *tmp_i = wp->tmp_i;
     float *tmp_w = wp->tmp_w;
     float *out_mean = wp->out_mean;
+    float *out_rms = wp->out_rms;
 
     _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
     _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
@@ -658,13 +686,13 @@ inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, co
 	const T *in_i2 = in_i + ifreq * Df * istride;
 	const T *in_w2 = in_w + ifreq * Df * istride;
 
-	_wrms_1d_outbuf<T,S> out(out_i2, out_w2);
+	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds);
 	
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, istride);
+	out.end_row();
 
-	float wisum = out.wisum.sum();
-	float wsum = out.wsum.sum();
-	out_mean[ifreq] = (wsum > 0.0) ? (wisum/wsum) : 0.0;
+	out_mean[ifreq] = out.mean.template extract<0> ();
+	out_rms[ifreq] = out.rms.template extract<0> ();
     }
 }
 

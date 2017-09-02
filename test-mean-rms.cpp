@@ -8,17 +8,23 @@ using namespace std;
 using namespace rf_kernels;
 
 
-inline void reference_weighted_mean(float &out_mean, const float *i_in, const float *w_in, int n, int stride)
+inline void reference_weighted_mean(float &out_mean, float &out_rms, const float *i_in, const float *w_in, int n, int stride)
 {
-    float wisum = 0.0;
     float wsum = 0.0;
+    float wisum = 0.0;
+    float wiisum = 0.0;
 
     for (int i = 0; i < n; i++) {
-	wisum += w_in[i*stride] * i_in[i*stride];
 	wsum += w_in[i*stride];
+	wisum += w_in[i*stride] * i_in[i*stride];
     }
 
     out_mean = (wsum > 0.0) ? (wisum/wsum) : 0.0;
+
+    for (int i = 0; i < n; i++)
+	wiisum += w_in[i*stride] * square(i_in[i*stride] - out_mean);
+
+    out_rms = (wsum > 0.0) ? sqrt(wiisum/wsum) : 0.0;
 }
 
 
@@ -46,6 +52,7 @@ static void test_weighted_mean_rms(std::mt19937 &rng, int nfreq, int nt_chunk, i
     vector<float> i_ds(nfreq_ds * nt_ds, 0.0);
     vector<float> w_ds(nfreq_ds * nt_ds, 0.0);
     vector<float> mean(nout, 0.0);
+    vector<float> rms(nout, 0.0);
 	
     // Reference weighted_mean_rms
     // Step 1: downsample
@@ -54,12 +61,14 @@ static void test_weighted_mean_rms(std::mt19937 &rng, int nfreq, int nt_chunk, i
 
     // Step 2: compute wrms (AXIS_TIME assumed)
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++)
-	reference_weighted_mean(mean[ifreq_ds], &i_ds[ifreq_ds*nt_ds], &w_ds[ifreq_ds*nt_ds], nt_ds, 1);
+	reference_weighted_mean(mean[ifreq_ds], rms[ifreq_ds], &i_ds[ifreq_ds*nt_ds], &w_ds[ifreq_ds*nt_ds], nt_ds, 1);
 
     // Now compare fast vs reference
     
-    for (int i = 0; i < nout; i++)
+    for (int i = 0; i < nout; i++) {
 	rf_assert(abs(wrms.out_mean[i] - mean[i]) < 1.0e-4);
+	rf_assert(abs(wrms.out_rms[i] - rms[i]) < 1.0e-4);
+    }
 
     for (int i = 0; i < wrms.nfreq_ds * wrms.nt_ds; i++)
 	rf_assert(abs(wrms.tmp_i[i] - i_ds[i]) < 1.0e-4);

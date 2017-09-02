@@ -107,6 +107,7 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
     this->nout = nfreq_ds;
 
     this->out_mean = aligned_alloc<float> (nout);
+    this->out_rms = aligned_alloc<float> (nout);
     this->tmp_i = aligned_alloc<float> (nfreq_ds * nt_ds);
     this->tmp_w = aligned_alloc<float> (nfreq_ds * nt_ds);
 }
@@ -115,10 +116,11 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
 weighted_mean_rms::~weighted_mean_rms()
 {
     free(out_mean);
+    free(out_rms);
     free(tmp_i);
     free(tmp_w);
 
-    out_mean = tmp_i = tmp_w = nullptr;
+    out_mean = out_rms = tmp_i = tmp_w = nullptr;
 }
 
 
