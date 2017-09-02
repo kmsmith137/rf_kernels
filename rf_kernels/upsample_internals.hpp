@@ -90,48 +90,53 @@ inline void _upsample_weights_0b(T *wp, const simd_upsampler<T,S,S> &mask, int s
 //
 // These apply the mask to a shape-(Df,Dt*S) array.
 
-template<int Df, int Dt, typename T, int S>
-inline void _upsample_weights_0d(T *wp, simd_t<T,S> mask, int stride)
-{
-    _upsample_weights_0b<Df,Dt,Dt> (wp, simd_upsampler<T,S,Dt>(mask), stride);
-}
 
-template<int Df, typename T, int S>
-inline void _upsample_weights_0d(T *wp, simd_t<T,S> mask, int stride, int Dt)
-{
-    _upsample_weights_0b<Df,S> (wp, simd_upsampler<T,S,S>(mask), stride, Dt);
-}
+template<typename T_, int S_, int Df, int Dt>
+struct _weight_upsampler_0d_Dtsm {
+    using T = T_;
+    static constexpr int S = S_;
+    
+    inline constexpr int get_Dt() const { return Dt; }
+    
+    inline void put_mask(T *w_out, int stride, simd_t<T,S> mask)
+    {
+	_upsample_weights_0b<Df,Dt,Dt> (w_out, simd_upsampler<T,S,Dt>(mask), stride);	
+    }
+};
+
+
+template<typename T_, int S_, int Df>
+struct _weight_upsampler_0d_Dtlg {
+    using T = T_;
+    static constexpr int S = S_;
+    
+    const int Dt;
+    
+    _weight_upsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
+
+    inline int get_Dt() const { return Dt; }
+    
+    inline void put_mask(T *w_out, int stride, simd_t<T,S> mask)
+    {
+	_upsample_weights_0b<Df,S> (w_out, simd_upsampler<T,S,S>(mask), stride, Dt);
+    }
+};
 
 
 // -------------------------------------------------------------------------------------------------
 //
-// _upsample_weights_1d<Df,Dt> (int nt_in, T *out, int ostride, const T *in, simd_t<T,S> w_cutoff)
-// _upsample_weights_1d<Df>    (int nt_in, T *out, int ostride, const T *in, simd_t<T,S> w_cutoff, int Dt)
-//
-// These operate on an 1D input array of length nt_in, and an output array of shape (Df,Dt*nt_in).
-// In the first case, Dt is a compile-time parameter, and in the second case it is a runtime parameter
-// In the second case, Dt must be divisible by the simd size S!
-//
-// Caller must check that nt_in is divisible by the simd_size S.
+// _upsample_weights_1d
 
 
-template<int Df, int Dt, typename T, int S>
-inline void _upsample_weights_1d(int nt_in, T *out, int ostride, const T *in, simd_t<T,S> w_cutoff)
+template<typename Tus0, typename T = typename Tus0::T, int S = Tus0::S>
+inline void _upsample_weights_1d(Tus0 &us0, int nt_in, T *w_out, int ostride, const T *in, simd_t<T,S> w_cutoff)
 {
+    const int Dt = us0.get_Dt();
+    
     for (int it = 0; it < nt_in; it += S) {
 	simd_t<T,S> w = simd_helpers::simd_load<T,S> (in+it);
 	simd_t<T,S> mask = (w > w_cutoff);
-	_upsample_weights_0d<Df,Dt> (out+it*Dt, mask, ostride);
-    }
-}
-
-template<int Df, typename T, int S>
-inline void _upsample_weights_1d(int nt_in, T *out, int ostride, const T *in, simd_t<T,S> w_cutoff, int Dt)
-{
-    for (int it = 0; it < nt_in; it += S) {
-	simd_t<T,S> w = simd_helpers::simd_load<T,S> (in+it);
-	simd_t<T,S> mask = (w > w_cutoff);
-	_upsample_weights_0d<Df> (out+it*Dt, mask, ostride, Dt);
+	us0.put_mask(w_out + it*Dt, ostride, mask);
     }
 }
 
@@ -144,46 +149,48 @@ inline void _upsample_weights_1d(int nt_in, T *out, int ostride, const T *in, si
 template<typename T, int S, int Df, int Dt>
 inline void kernel_upsample_weights_Dfsm_Dtsm(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
 {
+    _weight_upsampler_0d_Dtsm<T,S,Df,Dt> us0;
     simd_t<T,S> w_cutoff = w_cutoff_;
 
     for (int ifreq = 0; ifreq < nfreq_in; ifreq++)
-	_upsample_weights_1d<Df,Dt> (nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff);
+	_upsample_weights_1d(us0, nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff);
 }
 
 
 template<typename T, int S, int Df>
 inline void kernel_upsample_weights_Dfsm_Dtlg(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
 {
+    _weight_upsampler_0d_Dtlg<T,S,Df> us0(wp->Dt);
     simd_t<T,S> w_cutoff = w_cutoff_;
-    int Dt = wp->Dt;
 
     for (int ifreq = 0; ifreq < nfreq_in; ifreq++)
-	_upsample_weights_1d<Df> (nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff, Dt);
+	_upsample_weights_1d(us0, nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff);
 }
 
 
 template<typename T, int S, int Dt>
 inline void kernel_upsample_weights_Dflg_Dtsm(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
 {
+    _weight_upsampler_0d_Dtsm<T,S,S,Dt> us0;
     simd_t<T,S> w_cutoff = w_cutoff_;
     int Df = wp->Df;
 
     for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++)
 	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += S)
-	    _upsample_weights_1d<S,Dt> (nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff);
+	    _upsample_weights_1d(us0, nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff);
 }
 
 
 template<typename T, int S>
 inline void kernel_upsample_weights_Dflg_Dtlg(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
 {
+    _weight_upsampler_0d_Dtlg<T,S,S> us0(wp->Dt);
     simd_t<T,S> w_cutoff = w_cutoff_;
     int Df = wp->Df;
-    int Dt = wp->Dt;
 
     for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++)
 	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += S)
-	    _upsample_weights_1d<S> (nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff, Dt);
+	    _upsample_weights_1d(us0, nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff);
 }
 
 
