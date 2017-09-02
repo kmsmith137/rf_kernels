@@ -43,7 +43,7 @@ inline kernel_t get_kernel(int Df, int Dt)
     if (Df > 8) {
 	if (_unlikely(Df % 8 != 0))
 	    _no_kernel(Df,Dt);
-	Df = 16;
+	Df = 8;
     }
 
     if (Dt > 8) {
@@ -63,22 +63,12 @@ inline kernel_t get_kernel(int Df, int Dt)
 
 template<int Df, int Dt> struct kernel
 {
-    static kernel_t get() { return kernel_upsample_weights_Dfsm_Dtsm<float,8,Df,Dt>; }
+    static kernel_t get() { return kernel_upsample_weights_Dtsm<float,8,Df,Dt>; }
 };
 
 template<int Df> struct kernel<Df,16>
 {
-    static kernel_t get() { return kernel_upsample_weights_Dfsm_Dtlg<float,8,Df>; }
-};
-
-template<int Dt> struct kernel<16,Dt>
-{
-    static kernel_t get() { return kernel_upsample_weights_Dflg_Dtsm<float,8,Dt>; }
-};
-
-template<> struct kernel<16,16>
-{
-    static kernel_t get() { return kernel_upsample_weights_Dflg_Dtlg<float,8>; }
+    static kernel_t get() { return kernel_upsample_weights_Dtlg<float,8,Df>; }
 };
 
 
@@ -106,7 +96,7 @@ inline void _populate2()
 
 
 struct _initializer {
-    _initializer() { _populate2<16,16>(); }
+    _initializer() { _populate2<8,16>(); }
 } _init;
 
 

@@ -50,7 +50,8 @@ template<typename T_, int S_, int Df, int Dt>
 struct _weight_upsampler_0d_Dtsm {
     using T = T_;
     static constexpr int S = S_;
-    
+
+    inline constexpr int get_Df() const { return Df; }
     inline constexpr int get_Dt() const { return Dt; }
 
     
@@ -83,7 +84,7 @@ struct _weight_upsampler_0d_Dtlg {
     
     _weight_upsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
 
-
+    inline constexpr int get_Df() const { return Df; }
     inline int get_Dt() const { return Dt; }
 
     
@@ -112,18 +113,28 @@ struct _weight_upsampler_0d_Dtlg {
 
 // -------------------------------------------------------------------------------------------------
 //
-// _upsample_weights_1d
+// _upsample_weights_2d()
 
 
 template<typename Tus0, typename T = typename Tus0::T, int S = Tus0::S>
-inline void _upsample_weights_1d(Tus0 &us0, int nt_in, T *w_out, int ostride, const T *in, simd_t<T,S> w_cutoff)
+inline void _upsample_weights_2d(Tus0 &us0, int Df, int nfreq_in, int nt_in, T *w_out, int ostride, const T *w_in, int istride, T w_cutoff_)
 {
+    const int Df0 = us0.get_Df();
     const int Dt = us0.get_Dt();
-    
-    for (int it = 0; it < nt_in; it += S) {
-	simd_t<T,S> w = simd_helpers::simd_load<T,S> (in+it);
-	simd_t<T,S> mask = (w > w_cutoff);
-	us0.put_mask(w_out + it*Dt, ostride, mask);
+    simd_t<T,S> w_cutoff = w_cutoff_;
+
+    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++) {
+	const T *w_in2 = w_in + ifreq_in * istride;
+
+	for (int ifreq_out = ifreq_in*Df; ifreq_out < (ifreq_in+1)*Df; ifreq_out += Df0) {
+	    T *w_out2 = w_out + ifreq_out * ostride;
+
+	    for (int it = 0; it < nt_in; it += S) {
+		simd_t<T,S> w = simd_helpers::simd_load<T,S> (w_in2 + it);
+		simd_t<T,S> mask = (w > w_cutoff);
+		us0.put_mask(w_out2 + it*Dt, ostride, mask);
+	    }
+	}
     }
 }
 
@@ -134,50 +145,18 @@ inline void _upsample_weights_1d(Tus0 &us0, int nt_in, T *w_out, int ostride, co
 
 
 template<typename T, int S, int Df, int Dt>
-inline void kernel_upsample_weights_Dfsm_Dtsm(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
+inline void kernel_upsample_weights_Dtsm(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff)
 {
     _weight_upsampler_0d_Dtsm<T,S,Df,Dt> us0;
-    simd_t<T,S> w_cutoff = w_cutoff_;
-
-    for (int ifreq = 0; ifreq < nfreq_in; ifreq++)
-	_upsample_weights_1d(us0, nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff);
+    _upsample_weights_2d(us0, wp->Df, nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff);
 }
 
 
 template<typename T, int S, int Df>
-inline void kernel_upsample_weights_Dfsm_Dtlg(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
+inline void kernel_upsample_weights_Dtlg(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff)
 {
     _weight_upsampler_0d_Dtlg<T,S,Df> us0(wp->Dt);
-    simd_t<T,S> w_cutoff = w_cutoff_;
-
-    for (int ifreq = 0; ifreq < nfreq_in; ifreq++)
-	_upsample_weights_1d(us0, nt_in, dst + ifreq*Df*dstride, dstride, src + ifreq*sstride, w_cutoff);
-}
-
-
-template<typename T, int S, int Dt>
-inline void kernel_upsample_weights_Dflg_Dtsm(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
-{
-    _weight_upsampler_0d_Dtsm<T,S,S,Dt> us0;
-    simd_t<T,S> w_cutoff = w_cutoff_;
-    int Df = wp->Df;
-
-    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++)
-	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += S)
-	    _upsample_weights_1d(us0, nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff);
-}
-
-
-template<typename T, int S>
-inline void kernel_upsample_weights_Dflg_Dtlg(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff_)
-{
-    _weight_upsampler_0d_Dtlg<T,S,S> us0(wp->Dt);
-    simd_t<T,S> w_cutoff = w_cutoff_;
-    int Df = wp->Df;
-
-    for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++)
-	for (int ifreq_out = ifreq_in * Df; ifreq_out < (ifreq_in+1) * Df; ifreq_out += S)
-	    _upsample_weights_1d(us0, nt_in, dst + ifreq_out*dstride, dstride, src + ifreq_in*sstride, w_cutoff);
+    _upsample_weights_2d(us0, wp->Df, nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff);
 }
 
 
