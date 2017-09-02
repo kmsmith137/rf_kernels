@@ -14,6 +14,7 @@ test-std-dev-clipper
 test-upsample
 
 time-downsample
+time-intensity-clipper
 time-memory-access-patterns
 time-online-mask-filler
 time-polynomial-detrender
