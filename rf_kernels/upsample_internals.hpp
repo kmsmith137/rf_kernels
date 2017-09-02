@@ -50,39 +50,6 @@ inline void _upsample_weights_0a(T *wp, simd_t<T,S> mask, int stride, int N)
 }
 
 
-// ------------------------------------------------------------------------------------------------
-//
-// _upsample_weights_0b<Df,Dt,P> (T *p, const simd_upsampler<T,S,Dt> &mask, int stride)
-// _upsample_weights_0b<Df,P> (T *p, const simd_upsampler<T,S,S> &mask, int stride, int Dt)
-//
-// These apply the mask to a shape-(Df,Dt*P) array, where P <= S.
-// They are "partial" versions of _upsample_weights_0d(), to be defined next.
-
-
-template<int Df, int Dt, int P, typename T, int S, typename std::enable_if<(P==0),int>::type = 0>
-inline void _upsample_weights_0b(T *wp, const simd_upsampler<T,S,Dt> &mask, int stride)
-{ }
-
-template<int Df, int Dt, int P, typename T, int S, typename std::enable_if<(P>0),int>::type = 0>
-inline void _upsample_weights_0b(T *wp, const simd_upsampler<T,S,Dt> &mask, int stride)
-{   
-    constexpr int Q = (P-1)*S;
-    _upsample_weights_0b<Df,Dt,P-1> (wp, mask, stride);
-    _upsample_weights_0a<Df> (wp+Q, mask.template get<P-1>(), stride);
-}
-
-template<int Df, int P, typename T, int S, typename std::enable_if<(P==0),int>::type = 0>
-inline void _upsample_weights_0b(T *wp, const simd_upsampler<T,S,S> &mask, int stride, int Dt)
-{ }
-
-template<int Df, int P, typename T, int S, typename std::enable_if<(P>0),int>::type = 0>
-inline void _upsample_weights_0b(T *wp, const simd_upsampler<T,S,S> &mask, int stride, int Dt)
-{
-    _upsample_weights_0b<Df,P-1> (wp, mask, stride, Dt);
-    _upsample_weights_0a<Df> (wp+(P-1)*Dt, mask.template get<P-1>(), stride, Dt);
-}
-
-
 // -------------------------------------------------------------------------------------------------
 //
 // _upsample_weights_0d<Df,Dt> (T *p, simd_t<T,S> mask, int stride)
@@ -97,10 +64,24 @@ struct _weight_upsampler_0d_Dtsm {
     static constexpr int S = S_;
     
     inline constexpr int get_Dt() const { return Dt; }
+
+    
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_upsampler<T,S,Dt> &mask, int stride)
+    { }
+
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_upsampler<T,S,Dt> &mask, int stride)
+    {   
+	constexpr int Q = (P-1)*S;
+	_put_mask_partial<P-1> (wp, mask, stride);
+	_upsample_weights_0a<Df> (wp+Q, mask.template get<P-1>(), stride);
+    }
+
     
     inline void put_mask(T *w_out, int stride, simd_t<T,S> mask)
     {
-	_upsample_weights_0b<Df,Dt,Dt> (w_out, simd_upsampler<T,S,Dt>(mask), stride);	
+	_put_mask_partial<Dt> (w_out, simd_upsampler<T,S,Dt>(mask), stride);	
     }
 };
 
@@ -114,11 +95,25 @@ struct _weight_upsampler_0d_Dtlg {
     
     _weight_upsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
 
+
     inline int get_Dt() const { return Dt; }
+
+    
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_upsampler<T,S,S> &mask, int stride)
+    { }
+
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_upsampler<T,S,S> &mask, int stride)
+    {
+	_put_mask_partial<P-1> (wp, mask, stride);
+	_upsample_weights_0a<Df> (wp+(P-1)*Dt, mask.template get<P-1>(), stride, Dt);
+    }
+
     
     inline void put_mask(T *w_out, int stride, simd_t<T,S> mask)
     {
-	_upsample_weights_0b<Df,S> (w_out, simd_upsampler<T,S,S>(mask), stride, Dt);
+	_put_mask_partial<S> (w_out, simd_upsampler<T,S,S>(mask), stride);
     }
 };
 
