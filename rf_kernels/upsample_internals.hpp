@@ -99,7 +99,7 @@ struct _weight_upsampler_0d_Dtlg {
 	simd_t<T,S> m = mask.template get<P-1>();
 
 	for (int i = 0; i < Dt; i += S)
-	    _mask_strided<Df> (wp+i, m, stride);
+	    _mask_strided<Df> (wp + (P-1)*Dt + i, m, stride);
     }
 
     
