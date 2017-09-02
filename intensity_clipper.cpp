@@ -120,6 +120,9 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
     if (_unlikely(niter < 1))
 	throw runtime_error("rf_kernels::intensity_clipper: expected niter >= 1");
 
+    this->nfreq_ds = xdiv(nfreq, Df);
+    this->nt_ds = xdiv(nt_chunk, Dt);
+
     // Depending on the arguments to the intensity_clipper, we may or may not need to allocate
     // temporary buffers for downsampled intensity and weights.
     //
@@ -128,9 +131,6 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
 
     if ((Df==1) && (Dt==1))
 	return;   // no allocation necessary
-
-    this->nfreq_ds = xdiv(nfreq, Df);
-    this->nt_ds = xdiv(nt_chunk, Dt);
 
     int nds = 0;
 
