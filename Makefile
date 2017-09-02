@@ -152,11 +152,10 @@ upsample.o: upsample.cpp $(CORE_DEPS) $(US_DEPS)
 ####################################################################################################
 
 
-
 test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp
 	$(CPP) -c -o $@ $<
 
-test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/intensity_clipper.hpp
+test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/downsample.hpp rf_kernels/mean_rms.hpp rf_kernels/intensity_clipper.hpp
 	$(CPP) -c -o $@ $<
 
 test-mean-rms.o: test-mean-rms.cpp $(TEST_DEPS) rf_kernels/mean_rms.hpp rf_kernels/downsample.hpp
@@ -181,7 +180,7 @@ test-upsample.o: test-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp
 test-downsample: test-downsample.o downsample.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
-test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o misc.o
+test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o upsample.o downsample.o mean_rms.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-mean-rms: test-mean-rms.o mean_rms.o downsample.o misc.o

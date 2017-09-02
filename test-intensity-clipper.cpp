@@ -1,6 +1,10 @@
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
+
+#include "rf_kernels/mean_rms.hpp"
+#include "rf_kernels/upsample.hpp"
+#include "rf_kernels/downsample.hpp"
 #include "rf_kernels/intensity_clipper.hpp"
 
 using namespace std;
@@ -10,204 +14,246 @@ using namespace rf_kernels;
 // -------------------------------------------------------------------------------------------------
 
 
-// Helper for reference_intensity_clipper().
-// The 'epsilon' parameter is used to exclude data when the variance
-// is small compared to the (mean)^2, see below.
-
-static void weighted_mean_and_rms(float &out_mean, float &out_rms, const float *intensity, const float *weights, int nfreq, int nt, int stride, float epsilon=1.0e-10)
+// Reference weighted_mean_and_rms take 1: assumes (axis,Df,Dt,niter)=(None,1,1,1).
+static void _ref_wrms(float *out_mean, float *out_rms, int nfreq, int nt, const float *i_in, const float *w_in, int stride)
 {
-    // If we return early, then the (mean, rms) will be zero.
-    out_mean = out_rms = 0.0;
-    
     float wsum = 0.0;
     float wisum = 0.0;
-    
+    float wiisum = 0.0;
+
     // First pass
-    for (int i = 0; i < nfreq; i++) {
-	for (int j = 0; j < nt; j++) {
-	    wsum += weights[i*stride+j];
-	    wisum += weights[i*stride+j] * intensity[i*stride+j];
-	}
-    }
-	
-    if (wsum <= 0.0)
-	return;
-	
-    float mu = wisum / wsum;
-    float wisum2 = 0.0;
-	
-    // Second pass
-    for (int i = 0; i < nfreq; i++)
-	for (int j = 0; j < nt; j++)
-	    wisum2 += weights[i*stride+j] * square(intensity[i*stride+j] - mu);
-
-    float var = wisum2 / wsum;
-    if (var <= epsilon*mu*mu)
-	return;
-
-    out_mean = mu;
-    out_rms = sqrt(var);
-}
-
-
-// Non-iterative for now!
-static void reference_intensity_clipper(const float *intensity, float *weights, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt)
-{
-    // Not much argument checking!
-    int nfreq_ds = xdiv(nfreq, Df);
-    int nt_ds = xdiv(nt, Dt);
-
-    float *intensity_ds = new float[nfreq_ds * nt_ds];
-    float *weights_ds = new float[nfreq_ds * nt_ds];
-	
-    // Weighted downsample. (Some cut-and-paste with test-downsample.cpp here)
-    
-    for (int ifreq_d = 0; ifreq_d < nfreq_ds; ifreq_d++) {
-	for (int it_d = 0; it_d < nt_ds; it_d++) {
-	    float wisum = 0.0;
-	    float wsum = 0.0;
-
-	    for (int ifreq_u = ifreq_d*Df; ifreq_u < (ifreq_d+1)*Df; ifreq_u++) {
-		for (int it_u = it_d*Dt; it_u < (it_d+1)*Dt; it_u++) {
-		    int i = ifreq_u*stride + it_u;   // array index
-		    wisum += weights[i] * intensity[i];
-		    wsum += weights[i];
-		}
-	    }
-
-	    intensity_ds[ifreq_d*nt_ds + it_d] = (wsum > 0.0) ? (wisum/wsum) : 0.0;
-	    weights_ds[ifreq_d*nt_ds + it_d] = wsum;
-	}
-    }
-
-    // Compute weighted mean/rms of downsampled array.
-    //
-    // We do this in a uniform way for all 'axis' values, by interpreting the
-    // output as an array whose shape (nfreq_mr, nt_mr) is:
-    //   
-    //   (1, nt_ds)     if axis==AXIS_FREQ
-    //   (nfreq_ds, 1)  if axis==AXIS_TIME
-    //   (1, 1)         if axis==AXIS_NONE
-    
-    int nfreq_mr = (axis == AXIS_TIME) ? nfreq_ds : 1;
-    int nt_mr = (axis == AXIS_FREQ) ? nt_ds : 1;
-    int Mf = xdiv(nfreq_ds, nfreq_mr);
-    int Mt = xdiv(nt_ds, nt_mr);
-
-    float *mean_arr = new float[nfreq_mr * nt_mr];
-    float *rms_arr = new float[nfreq_mr * nt_mr];
-    
-    for (int ifreq_m = 0; ifreq_m < nfreq_mr; ifreq_m++) {
-	for (int it_m = 0; it_m < nt_mr; it_m++) {
-	    weighted_mean_and_rms(mean_arr[ifreq_m*nt_mr + it_m],              // out_mean
-				  rms_arr[ifreq_m*nt_mr + it_m],               // out_rms
-				  &intensity_ds[ifreq_m*Mf*nt_ds + it_m*Mt],   // intensity
-				  &weights_ds[ifreq_m*Mf*nt_ds + it_m*Mt],     // weights
-				  Mf, Mt, nt_ds);                              // nfreq, nt, stride
-	}
-    }
-
-    // Threshold the downsampled array.
-
-    for (int ifreq_m = 0; ifreq_m < nfreq_mr; ifreq_m++) {
-	for (int it_m = 0; it_m < nt_mr; it_m++) {
-	    // Note: rms can be zero, if weighted_mean_and_rms() failed.
-	    float mean = mean_arr[ifreq_m*nt_mr + it_m];
-	    float rms = rms_arr[ifreq_m*nt_mr + it_m];
-
-	    for (int ifreq_d = ifreq_m*Mf; ifreq_d < (ifreq_m+1)*Mf; ifreq_d++) {
-		for (int it_d = it_m*Mt; it_d < (it_m+1)*Mt; it_d++) {
-		    // Index in downsampled array.
-		    int i = ifreq_d*nt_ds + it_d;
-			
-		    // Use of ">=" (rather than ">") means that we always mask if rms=0.
-		    if (abs(intensity_ds[i]-mean) >= sigma * rms)
-			weights_ds[i] = 0.0;
-		}
-	    }
-	}
-    }
-
-    // Mask the upsampled array.
-    
-    for (int ifreq_d = 0; ifreq_d < nfreq_ds; ifreq_d++) {
-	for (int it_d = 0; it_d < nt_ds; it_d++) {
-	    if (weights_ds[ifreq_d*nt_ds + it_d] > 0.0)
-		continue;
-
-	    for (int ifreq_u = ifreq_d*Df; ifreq_u < (ifreq_d+1)*Df; ifreq_u++)
-		for (int it_u = it_d*Dt; it_u < (it_d+1)*Dt; it_u++)
-		    weights[ifreq_u*stride + it_u] = 0.0;
-	}
-    }
-	
-    delete[] intensity_ds;
-    delete[] weights_ds;
-    delete[] mean_arr;
-    delete[] rms_arr;
-}
-
-
-static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt, int niter)
-{
-#if 0
-    cout << "test_intensity_clipper: nfreq=" << nfreq << ", nt=" << nt 
-	 << ", stride=" << stride << ", axis=" << axis << ", sigma=" << sigma 
-	 << ", Df=" << Df << ", Dt=" << Dt << ", niter=" << niter << endl;
-#endif
-
-    vector<float> in_i = uniform_randvec(rng, nfreq * stride, 0.0, 1.0);
-    vector<float> in_w = vector<float> (nfreq * stride, 0.0);
-
-    // Low value chosen to expose corner cases.
-    float pnonzero = 1.0 / float(Df*Dt);
-    for (size_t i = 0; i < in_w.size(); i++)
-	in_w[i] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
-
-    // Copy weights before running clippers.
-    vector<float> in_w2 = in_w;
-
-    // Fast kernel
-    intensity_clipper ic(nfreq, nt, axis, sigma, Df, Dt, niter);
-    ic.clip(&in_i[0], &in_w[0], stride);
-
-    // Fast kernel (niter-1)
-    if (niter > 1) {
-	intensity_clipper ic2(nfreq, nt, axis, sigma, Df, Dt, niter-1);
-	ic2.clip(&in_i[0], &in_w2[0], stride);
-    }
-
-    // Reference kernels
-    vector<float> in_w3 = in_w2;
-    reference_intensity_clipper(&in_i[0], &in_w2[0], nfreq, nt, stride, axis, 0.999 * sigma, Df, Dt);
-    reference_intensity_clipper(&in_i[0], &in_w3[0], nfreq, nt, stride, axis, 1.001 * sigma, Df, Dt);
-
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
-	    int i = ifreq * stride + it;
-	    rf_assert(in_w2[i] <= in_w[i]);
-	    rf_assert(in_w3[i] >= in_w[i]);
+	    wsum += w_in[ifreq*stride + it];
+	    wisum += w_in[ifreq*stride + it] * i_in[ifreq*stride + it];
+	}
+    }
+
+    float mean = (wsum > 0) ? (wisum / wsum) : 0.0;
+
+    // Second pass (note that there is no need to recompute wsum)
+    for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	for (int it = 0; it < nt; it++)
+	    wiisum += w_in[ifreq*stride + it] * square(i_in[ifreq*stride + it] - mean);
+
+    *out_mean = mean;
+    *out_rms = (wsum > 0) ? sqrt(wiisum/wsum) : 0.0;
+}
+
+
+// Reference weighted_mean_and_rms take 2: (Df,Dt,niter)=(1,1,1) assumed, but arbitrary axis allowed.
+static void reference_wrms(float *out_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, const float *w_in, int stride)
+{
+    if (axis == AXIS_FREQ) {
+	for (int it = 0; it < nt; it++)
+	    _ref_wrms(out_mean + it, out_rms + it, nfreq, 1, i_in + it, w_in + it, stride);
+    }
+    else if (axis == AXIS_TIME) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	    _ref_wrms(out_mean + ifreq, out_rms + ifreq, 1, nt, i_in + ifreq*stride, w_in + ifreq*stride, 0);
+    }
+    else if (axis == AXIS_NONE)
+	_ref_wrms(out_mean, out_rms, nfreq, nt, i_in, w_in, stride);
+    else
+	throw runtime_error("bad axis in reference_wrms()");
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+// Helper for reference_iclip: assumes (axis,Df,Dt)=(None,1,1) and (mean,thresh) already computed.
+static void _ref_iclip(int nfreq, int nt, const float *i_in, float *w_in, int stride, float mean, float thresh)
+{
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int it = 0; it < nt; it++) {
+	    if (abs(i_in[ifreq*stride+it] - mean) > thresh)
+		w_in[ifreq*stride+it] = 0.0;
 	}
     }
 }
 
 
-static void test_intensity_clipper(std::mt19937 &rng)
+// reference_iclip: assumes (Df,Dt)=(1,1) and (mean,rms) precomputed, but allows arbitrary axis.
+static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in, float *w_in, int stride, const float *mean, const float *rms, float sigma)
 {
-    for (int iter = 0; iter < 1000; iter++) {
-	int Df = 1 << randint(rng, 0, 4);
-	int Dt = 1 << randint(rng, 0, 4);
+    if (axis == AXIS_FREQ) {
+	for (int it = 0; it < nt; it++)
+	    _ref_iclip(nfreq, 1, i_in + it, w_in + it, stride, mean[it], sigma * rms[it]);
+    }
+    else if (axis == AXIS_TIME) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	    _ref_iclip(1, nt, i_in + ifreq*stride, w_in + ifreq*stride, 0, mean[ifreq], sigma * rms[ifreq]);
+    }
+    else if (axis == AXIS_NONE)
+	_ref_iclip(nfreq, nt, i_in, w_in, stride, mean[0], sigma * rms[0]);
+    else
+	throw runtime_error("bad axis in reference_iclip()");
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, bool two_pass)
+{
+    int nfreq_ds = xdiv(nfreq, Df);
+    int nt_ds = xdiv(nt_chunk, Dt);
+    
+    int nout = 1;
+    if (axis == AXIS_FREQ) nout = nt_ds;
+    if (axis == AXIS_TIME) nout = nfreq_ds;
+
+    // FIXME improve random generation of test data so that corner cases are exposed.
+    vector<float> i_in = uniform_randvec(rng, nfreq*stride, -1.0, 1.0);
+    vector<float> w_in = uniform_randvec(rng, nfreq*stride, 0.1, 1.0);
+
+    rf_kernels::weighted_mean_rms wrms(nfreq, nt_chunk, axis, Df, Dt, niter, sigma, two_pass);    
+    rf_assert(wrms.nfreq_ds == nfreq_ds);
+    rf_assert(wrms.nt_ds == nt_ds);
+    rf_assert(wrms.nout == nout);
+
+    // Run fast wrms kernel.
+    // Reminder: the outputs are stored in wrms.out_mean[] and wrms.out_rms[].
+    wrms.compute_wrms(&i_in[0], &w_in[0], stride);
+
+    // The rest of this routine is devoted to computing something to compare to!
+    // Outputs from reference wrms will go here.
+    vector<float> ref_mean(nout, 0.0);
+    vector<float> ref_rms(nout, 0.0);
+
+    // Temporary buffers.
+    vector<float> i_ds(nfreq_ds * nt_ds, 0.0);
+    vector<float> w_ds(nfreq_ds * nt_ds, 0.0);
+	
+    // Step 1: downsample
+    rf_kernels::wi_downsampler ds(Df, Dt);
+    ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
+
+    // Step 2: account for the first (niter-1) iterations by clipping.
+    if (niter > 1) {
+	rf_kernels::intensity_clipper ic(nfreq_ds, nt_ds, axis, sigma, 1, 1, niter-1, 0, two_pass);
+	ic.clip(&i_ds[0], &w_ds[0], nt_ds);
+    }
+
+    // Step 3: run reference wrms kernel.  Note that the reference kernel gets to assume (Df,Dt,niter) = (1,1,1).
+    reference_wrms(&ref_mean[0], &ref_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds);
+
+    // Step 4: compare outputs!    
+    for (int i = 0; i < nout; i++) {
+	rf_assert(abs(wrms.out_mean[i] - ref_mean[i]) < 1.0e-4);
+	rf_assert(abs(wrms.out_rms[i] - ref_rms[i]) < 1.0e-4);
+    }
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, double iter_sigma, bool two_pass)
+{
+    int nfreq_ds = xdiv(nfreq, Df);
+    int nt_ds = xdiv(nt_chunk, Dt);
+    
+    // FIXME improve random generation of test data so that corner cases are exposed.
+    vector<float> i_in = uniform_randvec(rng, nfreq*stride, -1.0, 1.0);
+    vector<float> w_in = uniform_randvec(rng, nfreq*stride, 0.1, 1.0);
+
+    rf_kernels::intensity_clipper ic(nfreq, nt_chunk, axis, sigma, Df, Dt, niter, iter_sigma, two_pass);
+    rf_assert(ic.nfreq_ds == nfreq_ds);
+    rf_assert(ic.nt_ds == nt_ds);
+
+    // Run fast kernel.
+    vector<float> w_fast = w_in;
+    ic.clip(&i_in[0], &w_fast[0], stride);
+
+    // The rest of this routine is devoted to computing something to compare to!
+
+    // Temporary buffers.
+    vector<float> i_ds(nfreq_ds * nt_ds, 0.0);
+    vector<float> w_ds(nfreq_ds * nt_ds, 0.0);
+
+    // Step 1: downsample.
+    rf_kernels::wi_downsampler ds(Df, Dt);
+    ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
+
+    // Step 2: compute wrms.
+    // Reminder: the outputs are stored in wrms.out_mean[] and wrms.out_rms[].
+    rf_kernels::weighted_mean_rms wrms(nfreq_ds, nt_ds, axis, 1, 1, niter, iter_sigma, two_pass);
+    wrms.compute_wrms(&i_ds[0], &w_ds[0], stride);
+
+    // Step 3: run reference intensity clipper.
+    // We do this twice, with slightly different thresholds, for numerical stability.
+    vector<float> w_ds1 = w_ds;
+    vector<float> w_ds2 = w_ds;
+
+    reference_iclip(nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds1[0], nt_ds, wrms.out_mean, wrms.out_rms, 0.9999 * sigma);
+    reference_iclip(nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds2[0], nt_ds, wrms.out_mean, wrms.out_rms, 1.0001 * sigma);
+
+    // Step 4: upsample weights (twice)
+    vector<float> w_ref1 = w_in;
+    vector<float> w_ref2 = w_in;
+
+    rf_kernels::weight_upsampler us(Df, Dt);
+    us.upsample(nfreq_ds, nt_ds, &w_ref1[0], stride, &w_ds1[0], nt_ds);
+    us.upsample(nfreq_ds, nt_ds, &w_ref2[0], stride, &w_ds2[0], nt_ds);
+
+    // Compare!
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int it = 0; it < nt_chunk; it++) {
+	    int i = ifreq * stride + it;
+	    rf_assert(w_fast[i] <= w_ref1[i]);
+	    rf_assert(w_fast[i] >= w_ref2[i]);
+	}
+    }
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
+{
+    const int nouter = 1000;
+
+    for (int iouter = 0; iouter < nouter; iouter++) {
+	axis_type axis = AXIS_TIME;  // FIXME
+	int Df = 1 << randint(rng, 0, 2);  // FIXME
+	int Dt = 1 << randint(rng, 0, 2);  // FIXME
+	int niter = randint(rng, niter_min, niter_max+1);
+	int nfreq = Df * randint(rng, 1, 17);
+	int nt = 8 * Dt * randint(rng, 1, 17);
+	int stride = randint(rng, nt, 2*nt);
+	double sigma = uniform_rand(rng, 1.5, 1.7);
+	bool two_pass = true;  // FIXME
+
+	test_wrms(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, two_pass);
+    }
+
+    cout << "test_rms(niter_min=" << niter_min << ",niter_max=" << niter_max << "): pass" << endl;
+}
+
+
+static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_max)
+{
+    const int nouter = 1000;
+
+    for (int iouter = 0; iouter < nouter; iouter++) {
+	axis_type axis = AXIS_TIME;  // FIXME
+	int Df = 1 << randint(rng, 0, 2);  // FIXME
+	int Dt = 1 << randint(rng, 0, 2);  // FIXME
+	int niter = randint(rng, niter_min, niter_max+1);
 	int nfreq = Df * randint(rng, 1, 17);
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.0, 1.5);
-	axis_type axis = random_axis_type(rng);
-	int niter = 1;   // FIXME
-	
-	test_intensity_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt, niter);
+	double iter_sigma = uniform_rand(rng, 1.5, 1.7);
+	bool two_pass = true;  // FIXME
+
+	test_intensity_clipper(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, iter_sigma, two_pass);
     }
 
-    cout << "test_intensity_clipper: pass" << endl;
+    cout << "test_intensity_clipper(niter_min=" << niter_min << ",niter_max=" << niter_max << "): pass" << endl;
 }
 
 
@@ -219,7 +265,14 @@ int main(int argc, char **argv)
     std::random_device rd;
     std::mt19937 rng(rd());
 
-    test_intensity_clipper(rng);
+    test_wrms(rng, 1, 1);
+    test_intensity_clipper(rng, 1, 1);
+
+    test_wrms(rng, 2, 2);
+    test_intensity_clipper(rng, 2, 2);
+
+    test_wrms(rng, 1, 4);
+    test_intensity_clipper(rng, 1, 4);
 
     return 0;
 }

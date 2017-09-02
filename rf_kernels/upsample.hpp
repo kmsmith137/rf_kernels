@@ -16,7 +16,8 @@ struct weight_upsampler {
     const int Dt;
 
     weight_upsampler(int Df, int Dt);
-
+    
+    // Note: updates existing weights in 'out'.
     void upsample(int nfreq_in, int nt_in, float *out, int ostride, const float *in, int istride, float w_cutoff=0.0);
     
     // Function pointer to low-level kernel
