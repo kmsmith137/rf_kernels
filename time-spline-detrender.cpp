@@ -2,7 +2,6 @@
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 #include "rf_kernels/spline_detrender.hpp"
-#include "rf_kernels/spline_detrender_internals.hpp"
 
 
 using namespace std;

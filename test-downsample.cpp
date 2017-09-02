@@ -4,12 +4,9 @@
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
 #include "rf_kernels/downsample.hpp"
-#include "rf_kernels/downsample_internals.hpp"
 
 using namespace std;
 using namespace rf_kernels;
-using namespace simd_helpers;
-
 
 
 // -------------------------------------------------------------------------------------------------

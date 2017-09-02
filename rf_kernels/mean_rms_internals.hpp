@@ -620,7 +620,8 @@ template<typename T, int S>
 struct _wrms_1d_outbuf {
     const simd_t<T,S> zero = 0;
     const simd_t<T,S> one = 1;
-    
+    const simd_t<T,S> sigma;
+
     T *i_out;
     T *w_out;
     
@@ -631,8 +632,16 @@ struct _wrms_1d_outbuf {
     
     simd_t<T,S> mean;
     simd_t<T,S> rms;
+    simd_t<T,S> thresh;
 
-    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_) : i_out(i_out_), w_out(w_out_), nds_t(nds_t_) { }
+
+    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_, simd_t<T,S> sigma_) : 
+	sigma(sigma_),
+	i_out(i_out_), 
+	w_out(w_out_), 
+	nds_t(nds_t_)
+    { }
+
 
     inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
     {
@@ -668,11 +677,22 @@ struct _wrms_1d_outbuf {
 	// FIXME need epsilons here?
 	simd_t<T,S> var = wden * wiisum.horizontal_sum();
 	rms = var.sqrt();
+	thresh = rms * sigma;
     }
+
+
+    // For intensity clipper!
+    inline simd_t<T,S> get_mask(int it)
+    {
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
+	simd_t<T,S> valid = (ival.abs() <= thresh);
+	return valid;
+    }
+
 
     // Assumes (mean, rms) have been computed from a previous iteration.
     // Recomputes (mean, rms), clipping entries within 'sigma' of the previous mean.
-    inline void iterate(simd_t<T,S> sigma)
+    inline void iterate()
     {
 	simd_t<T,S> thresh = rms * sigma;
 	simd_t<T,S> wiisum = zero;
@@ -708,6 +728,7 @@ struct _wrms_1d_outbuf {
 	
 	mean += dmean;
 	rms = var.sqrt();
+	thresh = rms * sigma;
     }
 };
 
@@ -734,14 +755,14 @@ inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, co
 	const T *in_i2 = in_i + ifreq * Df * istride;
 	const T *in_w2 = in_w + ifreq * Df * istride;
 
-	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds);
+	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds, sigma);
 	
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, istride);
 	out.end_row();
 
 	// (niter-1) iterations
 	for (int iter = 1; iter < niter; iter++)
-	    out.iterate(sigma);
+	    out.iterate();
 
 	out_mean[ifreq] = out.mean.template extract<0> ();
 	out_rms[ifreq] = out.rms.template extract<0> ();

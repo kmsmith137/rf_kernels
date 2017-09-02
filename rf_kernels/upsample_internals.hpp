@@ -9,6 +9,8 @@
 #include <simd_helpers/simd_float32.hpp>
 #include <simd_helpers/upsample.hpp>
 
+#include "upsample.hpp"
+
 namespace rf_kernels {
 #if 0
 }; // pacify emacs c-mode

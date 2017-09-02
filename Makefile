@@ -107,31 +107,24 @@ librf_kernels.so: $(OFILES)
 ####################################################################################################
 
 
-CORE_DEPS = \
-  rf_kernels/core.hpp \
-  rf_kernels/internals.hpp
+CORE_DEPS = rf_kernels/core.hpp rf_kernels/internals.hpp
 
-TEST_DEPS = \
-  rf_kernels/core.hpp \
-  rf_kernels/internals.hpp \
-  rf_kernels/unit_testing.hpp
+TEST_DEPS = $(CORE_DEPS) rf_kernels/unit_testing.hpp
 
-CLIPPER_DEPS = \
-  rf_kernels/core.hpp \
-  rf_kernels/internals.hpp \
-  rf_kernels/downsample_internals.hpp \
-  rf_kernels/mean_rms.hpp \
-  rf_kernels/mean_rms_internals.hpp \
-  rf_kernels/clipper_internals.hpp
+DS_DEPS = rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+US_DEPS = rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+MR_DEPS = rf_kernels/mean_rms.hpp rf_kernels/mean_rms_internals.hpp $(DS_DEPS)
+IC_DEPS = rf_kernels/intensity_clipper.hpp rf_kernels/intensity_clipper_internals.hpp rf_kernels/clipper_internals.hpp $(MR_DEPS) $(US_DEPS)
+SDC_DEPS = rf_kernels/std_dev_clipper.hpp rf_kernels/std_dev_clipper_internals.hpp rf_kernels/clipper_internals.hpp $(MR_DEPS)
 
 
-downsample.o: downsample.cpp $(CORE_DEPS) rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+downsample.o: downsample.cpp $(CORE_DEPS) $(DS_DEPS)
 	$(CPP) -c -o $@ $<
 
-intensity_clipper.o: intensity_clipper.cpp $(CLIPPER_DEPS) rf_kernels/intensity_clipper_internals.hpp rf_kernels/intensity_clipper.hpp
+intensity_clipper.o: intensity_clipper.cpp $(CORE_DEPS) $(IC_DEPS)
 	$(CPP) -c -o $@ $<
 
-mean_rms.o: mean_rms.cpp $(CORE_DEPS) rf_kernels/mean_rms_internals.hpp rf_kernels/mean_rms.hpp
+mean_rms.o: mean_rms.cpp $(CORE_DEPS) $(MR_DEPS)
 	$(CPP) -c -o $@ $<
 
 misc.o: misc.cpp $(CORE_DEPS)
@@ -140,19 +133,19 @@ misc.o: misc.cpp $(CORE_DEPS)
 online_mask_filler.o: online_mask_filler.cpp $(CORE_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
-polynomial_detrender.o: polynomial_detrender.cpp $(CORE_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
+polynomial_detrender.o: polynomial_detrender.cpp $(CORE_DEPS) rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
 spline_detrender.o: spline_detrender.cpp $(CORE_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
-std_dev_clipper.o: std_dev_clipper.cpp $(CLIPPER_DEPS) rf_kernels/internals.hpp rf_kernels/std_dev_clipper.hpp rf_kernels/std_dev_clipper_internals.hpp
+std_dev_clipper.o: std_dev_clipper.cpp $(CORE_DEPS) $(SDC_DEPS)
 	$(CPP) -c -o $@ $<
 
 unit_testing.o: unit_testing.cpp $(TEST_DEPS)
 	$(CPP) -c -o $@ $<
 
-upsample.o: upsample.cpp $(CORE_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+upsample.o: upsample.cpp $(CORE_DEPS) $(US_DEPS)
 	$(CPP) -c -o $@ $<
 
 
@@ -160,7 +153,7 @@ upsample.o: upsample.cpp $(CORE_DEPS) rf_kernels/upsample.hpp rf_kernels/upsampl
 
 
 
-test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp
 	$(CPP) -c -o $@ $<
 
 test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/intensity_clipper.hpp
@@ -181,7 +174,7 @@ test-spline-detrender.o: test-spline-detrender.cpp $(TEST_DEPS) rf_kernels/splin
 test-std-dev-clipper.o: test-std-dev-clipper.cpp $(TEST_DEPS) rf_kernels/std_dev_clipper.hpp
 	$(CPP) -c -o $@ $<
 
-test-upsample.o: test-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+test-upsample.o: test-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp
 	$(CPP) -c -o $@ $<
 
 
@@ -213,7 +206,7 @@ test-upsample: test-upsample.o upsample.o
 ####################################################################################################
 
 
-time-downsample.o: time-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
+time-downsample.o: time-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp 
 	$(CPP) -c -o $@ $<
 
 time-intensity-clipper.o: time-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/intensity_clipper.hpp
@@ -228,10 +221,10 @@ time-online-mask-filler.o: time-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/x
 time-polynomial-detrender.o: time-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp
 	$(CPP) -c -o $@ $<
 
-time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
+time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp
 	$(CPP) -c -o $@ $<
 
-time-upsample.o: time-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
+time-upsample.o: time-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp
 	$(CPP) -c -o $@ $<
 
 
