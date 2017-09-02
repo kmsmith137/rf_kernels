@@ -119,6 +119,7 @@ CLIPPER_DEPS = \
   rf_kernels/core.hpp \
   rf_kernels/internals.hpp \
   rf_kernels/downsample_internals.hpp \
+  rf_kernels/mean_rms.hpp \
   rf_kernels/mean_rms_internals.hpp \
   rf_kernels/clipper_internals.hpp
 

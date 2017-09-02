@@ -35,7 +35,7 @@ struct weighted_mean_rms {
     void compute_wrms(const float *intensity, const float *weights, int stride);
 
     // Function pointer to low-level kernel.
-    void (*_f)(float *, int, int, const float *, const float *, int, int, int, int, float, float *, float *) = nullptr;
+    void (*_f)(const weighted_mean_rms *, const float *, const float *, int) = nullptr;
 
     int nfreq_ds = 0;
     int nt_ds = 0;

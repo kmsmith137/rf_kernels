@@ -14,9 +14,8 @@ namespace rf_kernels {
 
 
 struct wrms_kernel_table {
-    
-    // Usage: kernel(out_mean, nfreq_ds, nt_ds, in_i, in_w, istride, Df, Dt, niter, sigma, tmp_i, tmp_w)
-    using kernel_t = void (*)(float *, int, int, const float *, const float *, int, int, int, int, float, float *, float *);
+    // (wp, intensity, weights, stride)
+    using kernel_t = void (*)(const weighted_mean_rms *, const float *, const float *, int);
 
     // (axis, Df, Dt, iterative, two_pass)
     // Currently assume (axis, iterative, two_pass) = (AXIS_TIME, false, true).
@@ -131,7 +130,7 @@ void weighted_mean_rms::compute_wrms(const float *intensity, const float *weight
     if (_unlikely(abs(stride) < nt_chunk))
 	throw runtime_error("rf_kernels::weighed_mean_rms: stride is too small");
 
-    this->_f(out_mean, nfreq_ds, nt_ds, intensity, weights, stride, Df, Dt, niter, sigma, tmp_i, tmp_w);
+    this->_f(this, intensity, weights, stride);
 }
 
 

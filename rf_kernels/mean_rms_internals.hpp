@@ -6,6 +6,7 @@
 #include <simd_helpers/udsample.hpp>
 #include <simd_helpers/convert.hpp>
 
+#include "mean_rms.hpp"
 #include "downsample_internals.hpp"
 
 
@@ -640,9 +641,14 @@ struct _wrms_1d_outbuf {
 
 
 template<typename T, int S, int Df, int Dt>
-inline void kernel_wrms_Dfsm_Dtsm(T *out_mean, int nfreq_ds, int nt_ds, const T *in_i, const T *in_w,
-				  int istride, int Df_, int Dt_, int niter, T sigma, T *tmp_i, T *tmp_w)
+inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int istride)
 {
+    int nfreq_ds = wp->nfreq_ds;
+    int nt_ds = wp->nt_ds;
+    float *tmp_i = wp->tmp_i;
+    float *tmp_w = wp->tmp_w;
+    float *out_mean = wp->out_mean;
+
     _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
     _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
 
