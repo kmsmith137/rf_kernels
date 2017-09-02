@@ -607,30 +607,32 @@ inline void _kernel_wrms_iterate_1d_f(simd_t<T,S> &mean, simd_t<T,S> &rms, const
 //=================================================================================================
 //=================================================================================================
 //=================================================================================================
+//
+// Currently assume AXIS_TIME
+// Currently assume two_pass=true
+// Currently assume (Df, Dt) "small".
 
 
 // -------------------------------------------------------------------------------------------------
-//
-// Usage: kernel(out_mean, nfreq, nt, in_i, in_w, istride, Df, Dt, niter, sigma, tmp_i, tmp_w)
 
 
 template<typename T, int S>
 struct _wrms_1d_outbuf {
+    const simd_t<T,S> zero = 0;
+    const simd_t<T,S> one = 1;
+    
     T *i_out;
     T *w_out;
+    
     const int nds_t;
     
     simd_t<T,S> wisum = 0;
     simd_t<T,S> wsum = 0;
     
-    simd_t<T,S> wsum_reg;
     simd_t<T,S> mean;
     simd_t<T,S> rms;
 
     _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_) : i_out(i_out_), w_out(w_out_), nds_t(nds_t_) { }
-
-    const simd_t<T,S> zero = 0;
-    const simd_t<T,S> one = 1;
 
     inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
     {
@@ -647,22 +649,65 @@ struct _wrms_1d_outbuf {
     {
 	wisum = wisum.horizontal_sum();
 	wsum = wsum.horizontal_sum();
-	wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+	
+	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+	simd_t<T,S> wden = one / wsum_reg;
+	
+	mean = wden * wisum;
+	simd_t<T,S> wiisum = zero;
 
-	mean = wisum / wsum_reg;
-	rms = zero;
-
-	// Second pass to compute rms!
+	// Second pass to compute rms.
 	for (int it = 0; it < nds_t; it += S) {
 	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
 	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
 	    
 	    ival -= mean;
-	    rms += wval * ival * ival;
+	    wiisum += wval * ival * ival;
 	}
 
-	rms = rms.horizontal_sum() / wsum_reg;
-	rms = rms.sqrt();
+	// FIXME need epsilons here?
+	simd_t<T,S> var = wden * wiisum.horizontal_sum();
+	rms = var.sqrt();
+    }
+
+    // Assumes (mean, rms) have been computed from a previous iteration.
+    // Recomputes (mean, rms), clipping entries within 'sigma' of the previous mean.
+    inline void iterate(simd_t<T,S> sigma)
+    {
+	simd_t<T,S> thresh = rms * sigma;
+	simd_t<T,S> wiisum = zero;
+	
+	wisum = zero;
+	wsum = zero;
+	
+	for (int it = 0; it < nds_t; it += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
+
+	    // Use mean from previous iteration to (hopefully!) improve numerical stability.
+	    ival -= mean;
+	    
+	    simd_t<T,S> valid = (ival.abs() <= thresh);
+	    wval &= valid;
+
+	    simd_t<T,S> wival = wval * ival;
+	    wiisum += wival * ival;
+	    wisum += wival;
+	    wsum += wval;
+	}
+	
+	wiisum = wiisum.horizontal_sum();
+	wisum = wisum.horizontal_sum();
+	wsum = wsum.horizontal_sum();
+
+	// FIXME need epsilons here?
+	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+	simd_t<T,S> wden = one / wsum_reg;
+	simd_t<T,S> dmean = wden * wisum;
+	simd_t<T,S> var = wden * wiisum - dmean*dmean;
+	
+	mean += dmean;
+	rms = var.sqrt();
     }
 };
 
@@ -672,11 +717,14 @@ inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, co
 {
     int nfreq_ds = wp->nfreq_ds;
     int nt_ds = wp->nt_ds;
+    int niter = wp->niter;
     float *tmp_i = wp->tmp_i;
     float *tmp_w = wp->tmp_w;
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
 
+    simd_t<T,S> sigma(wp->sigma);
+    
     _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
     _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
 
@@ -690,6 +738,10 @@ inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, co
 	
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, istride);
 	out.end_row();
+
+	// (niter-1) iterations
+	for (int iter = 1; iter < niter; iter++)
+	    out.iterate(sigma);
 
 	out_mean[ifreq] = out.mean.template extract<0> ();
 	out_rms[ifreq] = out.rms.template extract<0> ();

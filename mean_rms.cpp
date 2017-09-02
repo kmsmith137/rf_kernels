@@ -17,23 +17,21 @@ struct wrms_kernel_table {
     // (wp, intensity, weights, stride)
     using kernel_t = void (*)(const weighted_mean_rms *, const float *, const float *, int);
 
-    // (axis, Df, Dt, iterative, two_pass)
-    // Currently assume (axis, iterative, two_pass) = (AXIS_TIME, false, true).
-    unordered_map<array<int,5>, kernel_t> kernel_table;
+    // (axis, Df, Dt, two_pass)
+    // Currently assume (axis, two_pass) = (AXIS_TIME, true).
+    unordered_map<array<int,4>, kernel_t> kernel_table;
 
 
-    inline kernel_t get(axis_type axis, int Df, int Dt, int niter, bool two_pass)
+    inline kernel_t get(axis_type axis, int Df, int Dt, bool two_pass)
     {
-	int t1 = min(niter-1, 1);
-	int t2 = two_pass ? 1 : 0;
-	
-	auto p = kernel_table.find({{axis,Df,Dt,t1,t2}});
+	int t = two_pass ? 1 : 0;	
+	auto p = kernel_table.find({{axis,Df,Dt,t}});
 	    
 	if (_unlikely(p == kernel_table.end())) {
 	    stringstream ss;
 	    ss << "rf_kernels::wrms_kernel_table: (axis,Df,Dt,niter,two_pass)=("
-	       << axis << "," << Df << "," << Dt << "," << niter
-	       << "," << two_pass << ") is invalid or unimplemented";
+	       << axis << "," << Df << "," << Dt << "," << two_pass
+	       << ") is invalid or unimplemented";
 	    throw runtime_error(ss.str());
 	}
     
@@ -50,7 +48,7 @@ struct wrms_kernel_table {
     {
 	_populate1<Df,(Dt/2)> ();
 
-	kernel_table[{{AXIS_TIME,Df,Dt,0,1}}] = kernel_wrms_Dfsm_Dtsm<float,8,Df,Dt>;
+	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms_Dfsm_Dtsm<float,8,Df,Dt>;
     }
 
     template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
@@ -80,8 +78,8 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
     niter(niter_),
     sigma(sigma_),
     two_pass(two_pass_),
-    _f(global_wrms_kernel_table.get(axis,Df,Dt,niter,two_pass))
-{ 
+    _f(global_wrms_kernel_table.get(axis,Df,Dt,two_pass))
+{
     if (_unlikely(nfreq <= 0))
 	throw runtime_error("rf_kernels::weighted_mean_rms: expected nfreq > 0");
 
@@ -94,12 +92,14 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
     if (_unlikely((nt_chunk % (8*Dt)) != 0))
 	throw runtime_error("rf_kernels::weighted_mean_rms: expected nt_chunk to be a multiple of 8*Dt");
 
+    if (_unlikely(niter < 1))
+	throw runtime_error("rf_kernels::weighted_mean_rms: expected niter < 1");
+    
     if (_unlikely((niter > 1) && sigma < 1.0))
 	throw runtime_error("rf_kernels::weighted_mean_rms: expected sigma >= 1.0");
 
     // Temporary!
     rf_assert(axis == AXIS_TIME);
-    rf_assert(niter == 1);
     rf_assert(two_pass == true);
     
     this->nfreq_ds = xdiv(nfreq, Df);
