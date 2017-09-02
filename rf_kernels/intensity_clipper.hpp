@@ -35,11 +35,14 @@ struct intensity_clipper {
 
     void clip(const float *intensity, float *weights, int stride);
 
-    float *ds_intensity = nullptr;
-    float *ds_weights = nullptr;
+    int nfreq_ds = 0;
+    int nt_ds = 0;
+
+    float *tmp_i = nullptr;
+    float *tmp_w = nullptr;
 
     // Function pointer to low-level kernel.
-    void (*_f)(const float *, float *, int, int, int, int, double, double, float *, float *) = nullptr;
+    void (*_f)(const intensity_clipper *, const float *, float *, int); 
 
     // Disallow copying, since we use bare pointers managed with malloc/free.
     intensity_clipper(const intensity_clipper &) = delete;

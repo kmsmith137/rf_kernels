@@ -30,8 +30,8 @@ namespace intensity_clipper_kernel_table {
 }; // pacify emacs c-mode
 #endif
 
-// kernel(intensity, weights, nfreq, nt_chunk, stride, niter, sigma, iter_sigma, ds_intensity, ds_weights)
-using kernel_t = void (*)(const float *, float *, int, int, int, int, double, double, float *, float *);
+// kernel(ic, intensity, weights, stride);
+using kernel_t = void (*)(const intensity_clipper *ic, const float *, float *, int);
  
 // (axis, Df, Dt, two_pass) -> kernel
 static unordered_map<array<int,4>, kernel_t> kernel_table;
@@ -60,13 +60,8 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type = 0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
-    
-    kernel_table[{{AXIS_FREQ,Df,Dt,0}}] = _kernel_clip_1d_f<float,8,Df,Dt,false>;
-    kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = _kernel_clip_1d_f<float,8,Df,Dt,true>;
-    kernel_table[{{AXIS_TIME,Df,Dt,0}}] = _kernel_clip_1d_t<float,8,Df,Dt,false>;
-    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = _kernel_clip_1d_t<float,8,Df,Dt,true>;
-    kernel_table[{{AXIS_NONE,Df,Dt,0}}] = _kernel_clip_2d<float,8,Df,Dt,false>;
-    kernel_table[{{AXIS_NONE,Df,Dt,1}}] = _kernel_clip_2d<float,8,Df,Dt,true>;
+
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_iclip_Dfsm_Dtsm<float,8,Df,Dt>;
 }
 
 
@@ -82,7 +77,7 @@ inline void _populate2()
 
 
 struct _initializer {
-    _initializer() { _populate2<16,16>(); }
+    _initializer() { _populate2<2,2>(); }
 } _init;
 
 }  // namespace intensity_clipper_kernel_table
@@ -133,32 +128,35 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
 
     if ((Df==1) && (Dt==1))
 	return;   // no allocation necessary
-    
+
+    this->nfreq_ds = xdiv(nfreq, Df);
+    this->nt_ds = xdiv(nt_chunk, Dt);
+
     int nds = 0;
 
     if (axis == AXIS_FREQ)
-	nds = (nfreq/Df) * 8;
+	nds = nfreq_ds * 8;
     else if (axis == AXIS_TIME)
-	nds = (nt_chunk/Dt);
+	nds = nt_ds;
     else if (axis == AXIS_NONE)
-	nds = (nfreq*nt_chunk) / (Df*Dt);
+	nds = nfreq_ds * nt_ds;
     else
 	throw runtime_error("rf_kernels internal error: bad axis in intensity_clipper constructor");
 
-    this->ds_intensity = aligned_alloc<float> (nds);
+    this->tmp_i = aligned_alloc<float> (nds);
 
     if ((niter == 1) && !two_pass)
 	return;  // no ds_weights necessary
     
-    this->ds_weights = aligned_alloc<float> (nds);
+    this->tmp_w = aligned_alloc<float> (nds);
 }
 
 
 intensity_clipper::~intensity_clipper()
 {
-    free(ds_intensity);
-    free(ds_weights);
-    ds_intensity = ds_weights = nullptr;
+    free(tmp_i);
+    free(tmp_w);
+    tmp_i = tmp_w = nullptr;
 }
 
 
@@ -170,7 +168,7 @@ void intensity_clipper::clip(const float *intensity, float *weights, int stride)
     if (_unlikely(abs(stride) < nt_chunk))
 	throw runtime_error("rf_kernels::intensity_clipper: stride is too small");
 
-    this->_f(intensity, weights, nfreq, nt_chunk, stride, niter, sigma, iter_sigma, ds_intensity, ds_weights);
+    this->_f(this, intensity, weights, stride);
 }
 
 
