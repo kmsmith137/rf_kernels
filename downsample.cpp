@@ -24,8 +24,8 @@ namespace downsampling_kernel_table {
 }; // pacify emacs c-mode
 #endif
 
-// Usage: kernel(nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt)
-using kernel_t = void (*)(int, int, float *, float *, int, const float *, const float *, int, int, int);
+// Usage: kernel(ds, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride)
+using kernel_t = void (*)(const wi_downsampler *, int, int, float *, float *, int, const float *, const float *, int);
 
 static unordered_map<array<int,2>, kernel_t> kernel_table;   // (Df,Dt) -> kernel
 
@@ -63,27 +63,27 @@ inline kernel_t get_kernel(int Df, int Dt)
 
 template<int Df, int Dt> struct kernel
 {
-    static kernel_t get() { return _wi_downsample_2d_Df_Dt<float,8,Df,Dt>; }
+    static kernel_t get() { return kernel_wi_downsample_Df_Dt<float,8,Df,Dt>; }
 };
 
 template<int Df> struct kernel<Df,16>
 {
-    static kernel_t get() { return _wi_downsample_2d_Df<float,8,Df>; }
+    static kernel_t get() { return kernel_wi_downsample_Df<float,8,Df>; }
 };
 
 template<int Dt> struct kernel<16,Dt>
 {
-    static kernel_t get() { return _wi_downsample_2d_Dt<float,8,Dt>; }
+    static kernel_t get() { return kernel_wi_downsample_Dt<float,8,Dt>; }
 };
 
 template<> struct kernel<16,16>
 {
-    static kernel_t get() { return _wi_downsample_2d<float,8>; }
+    static kernel_t get() { return kernel_wi_downsample<float,8>; }
 };
 
 template<> struct kernel<1,1>
 {
-    static kernel_t get() { return _wi_downsample_2d_1_1<float>; }
+    static kernel_t get() { return kernel_wi_downsample_1_1<float>; }
 };
 
 
@@ -148,7 +148,7 @@ void wi_downsampler::downsample(int nfreq_out, int nt_out, float *out_i, float *
     if (_unlikely(!out_i || !out_w || !in_i || !in_w))
 	throw runtime_error("rf_kernels: null pointer passed to wi_downsampler::downsample()");
 
-    this->_f(nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt);
+    this->_f(this, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride);
 }
 
 

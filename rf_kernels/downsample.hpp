@@ -22,7 +22,7 @@ struct wi_downsampler {
 		    int ostride, const float *in_i, const float *in_w, int istride);
     
     // Function pointer to low-level kernel
-    void (*_f)(int, int, float *, float *, int, const float *, const float *, int, int, int);
+    void (*_f)(const wi_downsampler *, int, int, float *, float *, int, const float *, const float *, int);
 };
 
 
