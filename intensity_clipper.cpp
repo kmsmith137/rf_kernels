@@ -5,7 +5,6 @@
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/downsample_internals.hpp"
 #include "rf_kernels/mean_rms_internals.hpp"
-#include "rf_kernels/clipper_internals.hpp"
 #include "rf_kernels/intensity_clipper_internals.hpp"
 #include "rf_kernels/intensity_clipper.hpp"
 

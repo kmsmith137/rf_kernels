@@ -8,7 +8,6 @@
 INCFILES = \
   core.hpp \
   internals.hpp \
-  clipper_internals.hpp \
   downsample.hpp \
   downsample_internals.hpp \
   intensity_clipper.hpp \
@@ -113,8 +112,8 @@ TEST_DEPS = $(CORE_DEPS) rf_kernels/unit_testing.hpp
 DS_DEPS = rf_kernels/downsample.hpp rf_kernels/downsample_internals.hpp
 US_DEPS = rf_kernels/upsample.hpp rf_kernels/upsample_internals.hpp
 MR_DEPS = rf_kernels/mean_rms.hpp rf_kernels/mean_rms_internals.hpp $(DS_DEPS)
-IC_DEPS = rf_kernels/intensity_clipper.hpp rf_kernels/intensity_clipper_internals.hpp rf_kernels/clipper_internals.hpp $(MR_DEPS) $(US_DEPS)
-SDC_DEPS = rf_kernels/std_dev_clipper.hpp rf_kernels/std_dev_clipper_internals.hpp rf_kernels/clipper_internals.hpp $(MR_DEPS)
+IC_DEPS = rf_kernels/intensity_clipper.hpp rf_kernels/intensity_clipper_internals.hpp $(MR_DEPS) $(US_DEPS)
+SDC_DEPS = rf_kernels/std_dev_clipper.hpp rf_kernels/std_dev_clipper_internals.hpp $(MR_DEPS)
 
 
 downsample.o: downsample.cpp $(CORE_DEPS) $(DS_DEPS)

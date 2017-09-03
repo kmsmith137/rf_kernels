@@ -8,7 +8,6 @@
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/downsample_internals.hpp"
 #include "rf_kernels/mean_rms_internals.hpp"
-#include "rf_kernels/clipper_internals.hpp"
 #include "rf_kernels/std_dev_clipper_internals.hpp"
 #include "rf_kernels/std_dev_clipper.hpp"
 
