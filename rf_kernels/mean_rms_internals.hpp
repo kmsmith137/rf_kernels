@@ -732,29 +732,34 @@ struct _wrms_1d_outbuf {
 };
 
 
-template<typename Tds, typename T = typename Tds::T, int S = Tds::S>
-inline void _weighted_mean_rms(Tds &ds1, const weighted_mean_rms *wp, const T *in_i, const T *in_w, int istride)
-{
-    const int Df = ds1.get_Df();
+// -------------------------------------------------------------------------------------------------
 
-    int nfreq_ds = wp->nfreq_ds;
-    int nt_ds = wp->nt_ds;
-    int niter = wp->niter;
+
+// Note: Still assuming (axis, two_pass) = (AXIS_TIME, false).
+template<typename T, int S, int DfX, int DtX>
+inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+{
+    const int Df = wp->Df;
+    const int nfreq_ds = wp->nfreq_ds;
+    const int nt_ds = wp->nt_ds;
+    const int niter = wp->niter;
+    const simd_t<T,S> sigma = wp->sigma;
+    const _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
+
     float *tmp_i = wp->tmp_i;
     float *tmp_w = wp->tmp_w;
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
-    simd_t<T,S> sigma(wp->sigma);
 
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
 	T *out_i2 = tmp_i + ifreq * nt_ds;
 	T *out_w2 = tmp_w + ifreq * nt_ds;
-	const T *in_i2 = in_i + ifreq * Df * istride;
-	const T *in_w2 = in_w + ifreq * Df * istride;
+	const T *in_i2 = in_i + ifreq * Df * stride;
+	const T *in_w2 = in_w + ifreq * Df * stride;
 
 	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds, sigma);
 	
-	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, istride);
+	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
 	out.end_row();
 
 	// (niter-1) iterations
@@ -764,27 +769,6 @@ inline void _weighted_mean_rms(Tds &ds1, const weighted_mean_rms *wp, const T *i
 	out_mean[ifreq] = out.mean.template extract<0> ();
 	out_rms[ifreq] = out.rms.template extract<0> ();
     }
-}
-
-
-// -------------------------------------------------------------------------------------------------
-
-
-template<typename T, int S, int Df, int Dt>
-inline void kernel_wrms_Dfsm_Dtsm(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
-{
-    _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
-    _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
-    _weighted_mean_rms(ds1, wp, in_i, in_w, stride);
-}
-
-
-template<typename T, int S, int Df>
-inline void kernel_wrms_Dfsm_Dtlg(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
-{
-    _wi_downsampler_0d_Dtlg<T,S,Df> ds0(wp->Dt);
-    _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
-    _weighted_mean_rms(ds1, wp, in_i, in_w, stride);
 }
 
 

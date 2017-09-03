@@ -49,7 +49,7 @@ struct wrms_kernel_table {
     {
 	_populate1<Df,(Dt/2)> ();
 
-	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms_Dfsm_Dtsm<float,8,Df,Dt>;
+	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms<float,8,Df,Dt>;
     }
 
     template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
@@ -65,7 +65,7 @@ struct wrms_kernel_table {
 
     wrms_kernel_table()
     {
-	_populate2<8,8> ();
+	_populate2<16,16> ();
     }
 } global_wrms_kernel_table;
 
