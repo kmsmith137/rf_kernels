@@ -53,6 +53,7 @@ TIMEBINFILES = \
   time-online-mask-filler \
   time-polynomial-detrender \
   time-spline-detrender \
+  time-std-dev-clipper \
   time-upsample
 
 UNITTEST_TOUCHFILES=$(addprefix unittest_touchfiles/ut_,$(TESTBINFILES))
@@ -215,6 +216,9 @@ time-polynomial-detrender.o: time-polynomial-detrender.cpp $(TEST_DEPS) rf_kerne
 time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp
 	$(CPP) -c -o $@ $<
 
+time-std-dev-clipper.o: time-std-dev-clipper.cpp $(TEST_DEPS) rf_kernels/std_dev_clipper.hpp
+	$(CPP) -c -o $@ $<
+
 time-upsample.o: time-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp
 	$(CPP) -c -o $@ $<
 
@@ -232,6 +236,9 @@ time-online-mask-filler: time-online-mask-filler.o online_mask_filler.o unit_tes
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-spline-detrender: time-spline-detrender.o unit_testing.o spline_detrender.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+time-std-dev-clipper: time-std-dev-clipper.o unit_testing.o std_dev_clipper.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-polynomial-detrender: time-polynomial-detrender.o misc.o unit_testing.o polynomial_detrender.o
