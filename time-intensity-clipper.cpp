@@ -20,9 +20,11 @@ struct intensity_clipper_timing_thread : public kernel_timing_thread {
 	// Note: 'ic_niter' is the number of clipper iterations; this->niter is the number of "outer" timing iterations!
 	for (int Df: { 1, 2, 4, 8, 16, 64, 256 }) {
 	    for (int Dt: { 1, 2, 4, 8, 16 }) {
-		for (axis_type axis: { AXIS_FREQ, AXIS_TIME, AXIS_NONE })  {
+		// for (axis_type axis: { AXIS_FREQ, AXIS_TIME, AXIS_NONE })  {
+		for (axis_type axis: { AXIS_TIME }) {
 		    for (int ic_niter: {1,4}) {
-			for (bool two_pass: {false,true}) {
+			// for (bool two_pass: {false,true}) {
+			for (bool two_pass: {true}) {
 			    if ((ic_niter > 1) && !two_pass)
 				continue;  // don't bother timing this case.
 			    
