@@ -295,7 +295,7 @@ struct _wi_downsampler_0d<T, S, Df0, DtX, true>
 
 // -------------------------------------------------------------------------------------------------
 //
-// _wi_downsampler_1d<T, S, Df, Dt> ds1(Df_, Dt_);
+// _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df_, Dt_);
 //
 // _wi_downsampler_1d_outbuf<T, S> out;
 //

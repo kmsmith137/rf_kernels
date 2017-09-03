@@ -237,9 +237,9 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
 
 static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 {
-    const int nouter = 1000;
+    cout << "test_rms(niter_min=" << niter_min << ",niter_max=" << niter_max << "): start" << endl;
 
-    for (int iouter = 0; iouter < nouter; iouter++) {
+    for (int iouter = 0; iouter < 300; iouter++) {
 	axis_type axis = AXIS_TIME;  // FIXME
 	int Df = 1 << randint(rng, 0, 2);  // FIXME
 	int Dt = 1 << randint(rng, 0, 2);  // FIXME
@@ -252,19 +252,17 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 
 	test_wrms(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, two_pass);
     }
-
-    cout << "test_rms(niter_min=" << niter_min << ",niter_max=" << niter_max << "): pass" << endl;
 }
 
 
 static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_max)
 {
-    const int nouter = 1000;
+    cout << "test_intensity_clipper(niter_min=" << niter_min << ",niter_max=" << niter_max << "): start" << endl;
 
-    for (int iouter = 0; iouter < nouter; iouter++) {
+    for (int iouter = 0; iouter < 300; iouter++) {
 	axis_type axis = AXIS_TIME;  // FIXME
-	int Df = 1 << randint(rng, 0, 2);  // FIXME
-	int Dt = 1 << randint(rng, 0, 2);  // FIXME
+	int Df = 1 << randint(rng, 0, 7);  // FIXME
+	int Dt = 1 << randint(rng, 0, 7);  // FIXME
 	int niter = randint(rng, niter_min, niter_max+1);
 	int nfreq = Df * randint(rng, 1, 17);
 	int nt = 8 * Dt * randint(rng, 1, 17);
@@ -275,8 +273,6 @@ static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_m
 
 	test_intensity_clipper(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, iter_sigma, two_pass);
     }
-
-    cout << "test_intensity_clipper(niter_min=" << niter_min << ",niter_max=" << niter_max << "): pass" << endl;
 }
 
 
@@ -299,5 +295,6 @@ int main(int argc, char **argv)
     test_wrms(rng, 1, 5);
     test_intensity_clipper(rng, 1, 5);
 
+    cout << "test-intensity-clipper: all tests passed" << endl;
     return 0;
 }

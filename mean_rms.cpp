@@ -25,9 +25,15 @@ struct wrms_kernel_table {
 
     inline kernel_t get(axis_type axis, int Df, int Dt, bool two_pass)
     {
+	if ((Df > 8) && (Df % 8 == 0))
+	    Df = 16;
+
+	if ((Dt > 8) && (Dt % 8 == 0))
+	    Dt = 16;
+
 	int t = two_pass ? 1 : 0;	
 	auto p = kernel_table.find({{axis,Df,Dt,t}});
-	    
+	
 	if (_unlikely(p == kernel_table.end())) {
 	    stringstream ss;
 	    ss << "rf_kernels::wrms_kernel_table: (axis,Df,Dt,niter,two_pass)=("
