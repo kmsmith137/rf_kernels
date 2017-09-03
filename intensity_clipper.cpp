@@ -1,8 +1,5 @@
-// FIXME: currently we need to compile a new kernel for every (Df,Dt) pair, where
-// Df,Dt are the frequency/time downsampling factors.  Eventually I'd like to 
-// improve this by having special kernels to handle the large-Df and large-Dt cases.
-
 #include <unordered_map>
+// #include <simd_helpers/simd_debug.hpp>
 
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"

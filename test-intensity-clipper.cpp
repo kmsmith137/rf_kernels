@@ -152,6 +152,12 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 
 static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, double iter_sigma, bool two_pass)
 {
+#if 0
+    cout << "test_intensity_clipper(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride 
+	 << ",axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma 
+	 << ",iter_sigma=" << iter_sigma << ",two_pass=" << two_pass << ")" << endl;
+#endif
+
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt_chunk, Dt);
     
@@ -180,7 +186,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     // Step 2: compute wrms.
     // Reminder: the outputs are stored in wrms.out_mean[] and wrms.out_rms[].
     rf_kernels::weighted_mean_rms wrms(nfreq_ds, nt_ds, axis, 1, 1, niter, iter_sigma, two_pass);
-    wrms.compute_wrms(&i_ds[0], &w_ds[0], stride);
+    wrms.compute_wrms(&i_ds[0], &w_ds[0], nt_ds);
 
     // Step 3: run reference intensity clipper.
     // We do this twice, with slightly different thresholds, for numerical stability.
@@ -198,12 +204,29 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     us.upsample(nfreq_ds, nt_ds, &w_ref1[0], stride, &w_ds1[0], nt_ds);
     us.upsample(nfreq_ds, nt_ds, &w_ref2[0], stride, &w_ds2[0], nt_ds);
 
+#if 0
+    int nmr = 1;
+    if (axis == AXIS_FREQ) nmr = nt_ds;
+    if (axis == AXIS_TIME) nmr = nfreq_ds;
+
+    for (int i = 0; i < nmr; i++)
+	cout << "mean[" << i << "]=" << wrms.out_mean[i] << ", rms[" << i << "]=" << wrms.out_rms[i] << endl;
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int it = 0; it < nt_chunk; it++) {
+	    int i = ifreq * stride + it;
+	    cout << "    (ifreq,it) = (" << ifreq << "," << it << "): i_in= " << i_in[i]
+		 << ", w_fast=" << w_fast[i] << ", w_ref1=" << w_ref1[i] << ", w_ref2=" << w_ref2[i] << endl;
+	}
+    }
+#endif
+
     // Compare!
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt_chunk; it++) {
 	    int i = ifreq * stride + it;
-	    rf_assert(w_fast[i] <= w_ref1[i]);
-	    rf_assert(w_fast[i] >= w_ref2[i]);
+	    rf_assert(w_fast[i] >= w_ref1[i]);
+	    rf_assert(w_fast[i] <= w_ref2[i]);
 	}
     }
 }
