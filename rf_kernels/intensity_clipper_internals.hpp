@@ -227,6 +227,7 @@ inline void kernel_iclip_Dfsm_Dtsm(const intensity_clipper *ic, const T *in_i, T
 	const T *in_i2 = in_i + ifreq_ds * Df * stride;
 	T *in_w2 = in_w + ifreq_ds * Df * stride;
 
+	// Note iter_sigma here (not sigma)
 	_wrms_1d_outbuf<T,S> out(tmp_i, tmp_w, nt_ds, iter_sigma);
 	
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
@@ -236,8 +237,11 @@ inline void kernel_iclip_Dfsm_Dtsm(const intensity_clipper *ic, const T *in_i, T
 	for (int iter = 1; iter < niter; iter++)
 	    out.iterate();
 	
+	// Note sigma here (not iter_sigma)
+	simd_t<T,S> thresh = sigma * out.rms;
+
 	for (int it = 0; it < nt_ds; it += S) {
-	    simd_t<T,S> mask = out.get_mask(it);
+	    simd_t<T,S> mask = out.get_mask(thresh, it);
 	    us0.put_mask(in_w2 + it*Dt, stride, mask);
 	}
     }
