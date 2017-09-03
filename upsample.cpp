@@ -61,17 +61,6 @@ inline kernel_t get_kernel(int Df, int Dt)
 }
 
 
-template<int Df, int Dt> struct kernel
-{
-    static kernel_t get() { return kernel_upsample_weights_Dtsm<float,8,Df,Dt>; }
-};
-
-template<int Df> struct kernel<Df,16>
-{
-    static kernel_t get() { return kernel_upsample_weights_Dtlg<float,8,Df>; }
-};
-
-
 template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
 inline void _populate1() { }
 
@@ -79,7 +68,7 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
-    kernel_table[{{Df,Dt}}] = kernel<Df,Dt>::get();
+    kernel_table[{{Df,Dt}}] = kernel_upsample_weights<float,8,Df,Dt>;
 }
 
 

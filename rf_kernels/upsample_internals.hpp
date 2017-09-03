@@ -42,21 +42,27 @@ inline void _mask_strided(T *wp, simd_t<T,S> mask, int stride)
 
 // -------------------------------------------------------------------------------------------------
 //
-// _upsample_weights_0d<Df,Dt> (T *p, simd_t<T,S> mask, int stride)
-// _upsample_weights_0d<Df> (T *p, simd_t<T,S> mask, int stride, int Dt)
+// _weight_upsampler_0d<T, S, Df0, DtX> us0(Dt);
 //
-// These apply the mask to a shape-(Df,Dt*S) array.
+// simd_t<T,S> mask;
+// us0.put_mask(w_out, stride, mask);
 
 
-template<typename T_, int S_, int Df, int Dt>
-struct _weight_upsampler_0d_Dtsm {
-    using T = T_;
-    static constexpr int S = S_;
+template<typename T, int S, int Df0, int DtX, bool Dt_Large = (DtX > S)>
+struct _weight_upsampler_0d;
 
-    inline constexpr int get_Df() const { return Df; }
-    inline constexpr int get_Dt() const { return Dt; }
 
-    
+// Case 1: "Small" Dt.
+template<typename T, int S, int Df0, int Dt>
+struct _weight_upsampler_0d<T, S, Df0, Dt, false>
+{
+    _weight_upsampler_0d(int Dt_) 
+    {
+	if (__builtin_expect(Dt != Dt_, 0))
+	    throw std::runtime_error("rf_kernels internal error: \"small\" Dt mismatch in _weight_upsampler_0d");
+    }
+
+
     template<int P, typename std::enable_if<(P==0),int>::type = 0>
     inline void _put_mask_partial(T *wp, const simd_upsampler<T,S,Dt> &mask, int stride)
     { }
@@ -64,9 +70,8 @@ struct _weight_upsampler_0d_Dtsm {
     template<int P, typename std::enable_if<(P>0),int>::type = 0>
     inline void _put_mask_partial(T *wp, const simd_upsampler<T,S,Dt> &mask, int stride)
     {   
-	constexpr int Q = (P-1)*S;
 	_put_mask_partial<P-1> (wp, mask, stride);
-	_mask_strided<Df> (wp+Q, mask.template get<P-1>(), stride);
+	_mask_strided<Df0> (wp + (P-1)*S, mask.template get<P-1>(), stride);
     }
 
     
@@ -77,17 +82,18 @@ struct _weight_upsampler_0d_Dtsm {
 };
 
 
-template<typename T_, int S_, int Df>
-struct _weight_upsampler_0d_Dtlg {
-    using T = T_;
-    static constexpr int S = S_;
-    
+// Case 2: "Large" Dt.
+template<typename T, int S, int Df0, int DtX>
+struct _weight_upsampler_0d<T, S, Df0, DtX, true>
+{
     const int Dt;
-    
-    _weight_upsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
-
-    inline constexpr int get_Df() const { return Df; }
-    inline int get_Dt() const { return Dt; }
+ 
+    _weight_upsampler_0d(int Dt_) : 
+	Dt(Dt_) 
+    { 
+	if (__builtin_expect((Dt_ <= S) || (Dt_ % S), 0))
+	    throw std::runtime_error("rf_kernels internal error: bad \"large\" Dt in _weight_upsampler_0d");
+    }
 
     
     template<int P, typename std::enable_if<(P==0),int>::type = 0>
@@ -102,7 +108,7 @@ struct _weight_upsampler_0d_Dtlg {
 	simd_t<T,S> m = mask.template get<P-1>();
 
 	for (int i = 0; i < Dt; i += S)
-	    _mask_strided<Df> (wp + (P-1)*Dt + i, m, stride);
+	    _mask_strided<Df0> (wp + (P-1)*Dt + i, m, stride);
     }
 
     
@@ -115,15 +121,20 @@ struct _weight_upsampler_0d_Dtlg {
 
 // -------------------------------------------------------------------------------------------------
 //
-// _upsample_weights_2d()
+// Bottom-line kernel.
 
 
-template<typename Tus0, typename T = typename Tus0::T, int S = Tus0::S>
-inline void _upsample_weights_2d(Tus0 &us0, int Df, int nfreq_in, int nt_in, T *w_out, int ostride, const T *w_in, int istride, T w_cutoff_)
+template<typename T, int S, int Df0, int DtX>
+inline void kernel_upsample_weights(const weight_upsampler *wp, int nfreq_in, int nt_in, T *w_out, int ostride, const T *w_in, int istride, T w_cutoff_)
 {
-    const int Df0 = us0.get_Df();
-    const int Dt = us0.get_Dt();
-    simd_t<T,S> w_cutoff = w_cutoff_;
+    const int Df = wp->Df;
+    const int Dt = wp->Dt;
+    const simd_t<T,S> w_cutoff = w_cutoff_;
+
+    if (__builtin_expect((Df <= 0) || (Df % Df0), 0))
+	throw std::runtime_error("rf_kernels: internal error: bad (Df,Df0) pair in kernel_upsample_weights");
+
+    _weight_upsampler_0d<T, S, Df0, DtX> us0(Dt);
 
     for (int ifreq_in = 0; ifreq_in < nfreq_in; ifreq_in++) {
 	const T *w_in2 = w_in + ifreq_in * istride;
@@ -137,28 +148,7 @@ inline void _upsample_weights_2d(Tus0 &us0, int Df, int nfreq_in, int nt_in, T *
 		us0.put_mask(w_out2 + it*Dt, ostride, mask);
 	    }
 	}
-    }
-}
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// Low-level kernels for rf_kernels::weight_upsampler.
-
-
-template<typename T, int S, int Df, int Dt>
-inline void kernel_upsample_weights_Dtsm(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff)
-{
-    _weight_upsampler_0d_Dtsm<T,S,Df,Dt> us0;
-    _upsample_weights_2d(us0, wp->Df, nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff);
-}
-
-
-template<typename T, int S, int Df>
-inline void kernel_upsample_weights_Dtlg(const weight_upsampler *wp, int nfreq_in, int nt_in, T *dst, int dstride, const T *src, int sstride, T w_cutoff)
-{
-    _weight_upsampler_0d_Dtlg<T,S,Df> us0(wp->Dt);
-    _upsample_weights_2d(us0, wp->Df, nfreq_in, nt_in, dst, dstride, src, sstride, w_cutoff);
+    }    
 }
 
 
