@@ -632,7 +632,6 @@ struct _wrms_1d_outbuf {
     
     simd_t<T,S> mean;
     simd_t<T,S> rms;
-    simd_t<T,S> thresh;
 
 
     _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_, simd_t<T,S> sigma_) : 
@@ -677,12 +676,11 @@ struct _wrms_1d_outbuf {
 	// FIXME need epsilons here?
 	simd_t<T,S> var = wden * wiisum.horizontal_sum();
 	rms = var.sqrt();
-	thresh = rms * sigma;
     }
 
 
     // For intensity clipper!
-    inline simd_t<T,S> get_mask(int it)
+    inline simd_t<T,S> get_mask(simd_t<T,S> thresh, int it)
     {
 	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
 	ival -= mean;
@@ -730,7 +728,6 @@ struct _wrms_1d_outbuf {
 	
 	mean += dmean;
 	rms = var.sqrt();
-	thresh = rms * sigma;
     }
 };
 
