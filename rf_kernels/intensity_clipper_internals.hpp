@@ -14,20 +14,25 @@ namespace rf_kernels {
 template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 
 
-template<typename T, int S, int Df, int Dt>
-inline void kernel_iclip_Dfsm_Dtsm(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
+template<typename T, int S, int DfX, int DtX>
+inline void kernel_intensity_clipper(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
 {
-    int nfreq_ds = ic->nfreq_ds;
-    int nt_ds = ic->nt_ds;
-    int niter = ic->niter;
+    // For upsampler.  Note std::min() can't be used in a constexpr!
+    constexpr int Dfu = (DfX < 8) ? DfX : 8;
+
+    const int Df = ic->Df;
+    const int Dt = ic->Dt;
+    const int nfreq_ds = ic->nfreq_ds;
+    const int nt_ds = ic->nt_ds;
+    const int niter = ic->niter;
+    const simd_t<T,S> sigma(ic->sigma);
+    const simd_t<T,S> iter_sigma(ic->iter_sigma);
+
     float *tmp_i = ic->tmp_i;
     float *tmp_w = ic->tmp_w;
-    simd_t<T,S> sigma(ic->sigma);
-    simd_t<T,S> iter_sigma(ic->iter_sigma);
     
-    _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
-    _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
-    _weight_upsampler_0d_Dtsm<T,S,Df,Dt> us0;
+    _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
+    _weight_upsampler_0d<T, S, Dfu, DtX> us0(Dt);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	const T *in_i2 = in_i + ifreq_ds * Df * stride;
@@ -46,9 +51,13 @@ inline void kernel_iclip_Dfsm_Dtsm(const intensity_clipper *ic, const T *in_i, T
 	// Note sigma here (not iter_sigma)
 	simd_t<T,S> thresh = sigma * out.rms;
 
-	for (int it = 0; it < nt_ds; it += S) {
-	    simd_t<T,S> mask = out.get_mask(thresh, it);
-	    us0.put_mask(in_w2 + it*Dt, stride, mask);
+	for (int ifrequ = 0; ifrequ < Df; ifrequ += Dfu) {
+	    T *in_w3 = in_w2 + ifrequ * stride;
+
+	    for (int it = 0; it < nt_ds; it += S) {
+		simd_t<T,S> mask = out.get_mask(thresh, it);
+		us0.put_mask(in_w3 + it*Dt, stride, mask);
+	    }
 	}
     }
 }

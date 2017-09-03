@@ -35,6 +35,12 @@ static unordered_map<array<int,4>, kernel_t> kernel_table;
 
 static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
 {
+    if ((Df > 8) && (Df % 8 == 0))
+	Df = 16;
+
+    if ((Dt > 8) && (Dt % 8 == 0))
+	Dt = 16;
+
     int t = two_pass ? 1 : 0;
     auto p = kernel_table.find({{axis,Df,Dt,t}});
     
@@ -57,7 +63,7 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_iclip_Dfsm_Dtsm<float,8,Df,Dt>;
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper<float,8,Df,Dt>;
 }
 
 
@@ -73,7 +79,7 @@ inline void _populate2()
 
 
 struct _initializer {
-    _initializer() { _populate2<2,2>(); }
+    _initializer() { _populate2<16,16>(); }
 } _init;
 
 }  // namespace intensity_clipper_kernel_table
