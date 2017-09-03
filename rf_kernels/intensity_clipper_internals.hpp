@@ -38,18 +38,14 @@ inline void kernel_intensity_clipper(const intensity_clipper *ic, const T *in_i,
 	const T *in_i2 = in_i + ifreq_ds * Df * stride;
 	T *in_w2 = in_w + ifreq_ds * Df * stride;
 
-	// Note iter_sigma here (not sigma)
-	_wrms_1d_outbuf<T,S> out(tmp_i, tmp_w, nt_ds, iter_sigma);
-	
+	_wrms_1d_outbuf<T,S> out(tmp_i, tmp_w, nt_ds);
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
-	out.end_row();
 
-	// (niter-1) iterations
-	for (int iter = 1; iter < niter; iter++)
-	    out.iterate();
+	// Note iter_sigma here (not sigma)	
+	out.finalize(niter, iter_sigma);
 	
 	// Note sigma here (not iter_sigma)
-	simd_t<T,S> thresh = sigma * out.rms;
+	simd_t<T,S> thresh = sigma * out.var.sqrt();
 
 	for (int ifrequ = 0; ifrequ < Df; ifrequ += Dfu) {
 	    T *in_w3 = in_w2 + ifrequ * stride;

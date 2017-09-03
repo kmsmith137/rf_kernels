@@ -620,7 +620,6 @@ template<typename T, int S>
 struct _wrms_1d_outbuf {
     const simd_t<T,S> zero = 0;
     const simd_t<T,S> one = 1;
-    const simd_t<T,S> sigma;
 
     T *i_out;
     T *w_out;
@@ -631,17 +630,17 @@ struct _wrms_1d_outbuf {
     simd_t<T,S> wsum = 0;
     
     simd_t<T,S> mean;
-    simd_t<T,S> rms;
+    simd_t<T,S> var;
 
 
-    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_, simd_t<T,S> sigma_) : 
-	sigma(sigma_),
+    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_) : 
 	i_out(i_out_), 
 	w_out(w_out_), 
 	nds_t(nds_t_)
     { }
 
 
+    // Callback for _wi_downsampler.
     inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
     {
 	wisum += wival;
@@ -653,7 +652,9 @@ struct _wrms_1d_outbuf {
 	wval.storeu(w_out + it);	
     }
 
-    inline void end_row()
+
+    // Called after wi_downsampler, to finalize variance.
+    inline void finalize(int niter, simd_t<T,S> sigma)
     {
 	wisum = wisum.horizontal_sum();
 	wsum = wsum.horizontal_sum();
@@ -674,8 +675,44 @@ struct _wrms_1d_outbuf {
 	}
 
 	// FIXME need epsilons here?
-	simd_t<T,S> var = wden * wiisum.horizontal_sum();
-	rms = var.sqrt();
+	var = wden * wiisum.horizontal_sum();
+
+	// Note (niter-1) iterations here (not niter iterations)
+	for (int iter = 1; iter < niter; iter++) {
+	    simd_t<T,S> thresh = var.sqrt() * sigma;
+
+	    wiisum = zero;
+	    wisum = zero;
+	    wsum = zero;
+	
+	    for (int it = 0; it < nds_t; it += S) {
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
+		
+		// Use mean from previous iteration to (hopefully!) improve numerical stability.
+		ival -= mean;
+		
+		simd_t<T,S> valid = (ival.abs() <= thresh);
+		wval &= valid;
+		
+		simd_t<T,S> wival = wval * ival;
+		wiisum += wival * ival;
+		wisum += wival;
+		wsum += wval;
+	    }
+	
+	    wiisum = wiisum.horizontal_sum();
+	    wisum = wisum.horizontal_sum();
+	    wsum = wsum.horizontal_sum();
+
+	    // FIXME need epsilons here?
+	    wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+	    wden = one / wsum_reg;
+	    simd_t<T,S> dmean = wden * wisum;
+	    
+	    mean += dmean;
+	    var = wden * wiisum - dmean*dmean;
+	}
     }
 
 
@@ -687,47 +724,6 @@ struct _wrms_1d_outbuf {
 
 	simd_t<T,S> valid = (ival.abs() <= thresh);
 	return valid;
-    }
-
-
-    // Assumes (mean, rms) have been computed from a previous iteration.
-    // Recomputes (mean, rms), clipping entries within 'sigma' of the previous mean.
-    inline void iterate()
-    {
-	simd_t<T,S> thresh = rms * sigma;
-	simd_t<T,S> wiisum = zero;
-	
-	wisum = zero;
-	wsum = zero;
-	
-	for (int it = 0; it < nds_t; it += S) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
-
-	    // Use mean from previous iteration to (hopefully!) improve numerical stability.
-	    ival -= mean;
-	    
-	    simd_t<T,S> valid = (ival.abs() <= thresh);
-	    wval &= valid;
-
-	    simd_t<T,S> wival = wval * ival;
-	    wiisum += wival * ival;
-	    wisum += wival;
-	    wsum += wval;
-	}
-	
-	wiisum = wiisum.horizontal_sum();
-	wisum = wisum.horizontal_sum();
-	wsum = wsum.horizontal_sum();
-
-	// FIXME need epsilons here?
-	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
-	simd_t<T,S> wden = one / wsum_reg;
-	simd_t<T,S> dmean = wden * wisum;
-	simd_t<T,S> var = wden * wiisum - dmean*dmean;
-	
-	mean += dmean;
-	rms = var.sqrt();
     }
 };
 
@@ -757,17 +753,14 @@ inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_
 	const T *in_i2 = in_i + ifreq * Df * stride;
 	const T *in_w2 = in_w + ifreq * Df * stride;
 
-	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds, sigma);
-	
+	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds);
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
-	out.end_row();
 
-	// (niter-1) iterations
-	for (int iter = 1; iter < niter; iter++)
-	    out.iterate();
+	out.finalize(niter, sigma);
 
+	simd_t<T,S> rms = out.var.sqrt();
 	out_mean[ifreq] = out.mean.template extract<0> ();
-	out_rms[ifreq] = out.rms.template extract<0> ();
+	out_rms[ifreq] = rms.template extract<0> ();
     }
 }
 
