@@ -173,27 +173,27 @@ public:
     const int nthreads;
 
     timing_thread_pool(int nthreads);
-
-    typedef struct timeval time_t;
-
-    time_t start_timer();
-    double stop_timer(const time_t &start_time);
     
     // Helper function called by timing_thread.
     int get_and_increment_thread_id();
 
+    // A "reducing" barrier.  When each thread arrives at the barrier, it
+    // specifies a value of "x".  The return value from wait_at_barrier()
+    // is the mean (over all threads) of the x-values.
+    double wait_at_barrier(double t=0);
+
 protected:
-    std::mutex lock;
-    std::condition_variable cond0;
-    std::condition_variable cond1;
-    std::condition_variable cond2;
-
-    double total_dt = 0.0;
-    int threads_so_far = 0;
-
-    int ix0 = 0;
-    int ix1 = 0;
-    int ix2 = 0;
+    // Assigning thread ID's.
+    std::mutex thread_id_lock;
+    int curr_thread_id = 0;
+    
+    // Barrier.
+    std::mutex barrier_lock;
+    std::condition_variable barrier_cv;
+    double barrier_tcurr = 0.0;
+    double barrier_tprev = 0.0;
+    int barrier_count = 0;
+    int barrier_gen = 0;
 };
 
 
@@ -214,15 +214,23 @@ protected:
 
     virtual void thread_body() = 0;
 
-    timing_thread_pool::time_t start_time;
+    struct timeval start_time;
     bool timer_is_running = false;
-
-    // Thread-collective: all threads wait at a barrier, then initialize their local timers.
+    
+    double local_dt = 0.0;
+    double global_dt = 0.0;
+    
+    // Thread-collective: all threads wait at a barrier, then start their local timers.
     void start_timer();
-
-    // Thread-collective: the returned time is the average taken over all threads.
+    
+    // Thread-collective: snychronizes and computes 'global_dt', the average running time on all threads.
     // If 'name' is non-null, then timing will be announced on thread ID zero.
-    double stop_timer(const char *name=nullptr);
+    void stop_timer(const char *name=nullptr);
+
+    // Temporarily pause local timer, if there is some processing which should
+    // be excluded from the timing.  (Not thread-collective.)
+    void pause_timer();
+    void unpause_timer();
 };
 
 

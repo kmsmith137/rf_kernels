@@ -69,61 +69,35 @@ timing_thread_pool::timing_thread_pool(int nthreads_) :
 }
 
 
-timing_thread_pool::time_t timing_thread_pool::start_timer()
-{
-    unique_lock<mutex> l(lock);
-
-    ix0++;
-    if (ix0 == nthreads) {
-	ix1 = ix2 = 0;
-	cond0.notify_all();
-    }
-    while (ix0 < nthreads)
-	cond0.wait(l);
-
-    time_t start_time;
-    gettimeofday(&start_time, NULL);
-    return start_time;
-}
-
-
-double timing_thread_pool::stop_timer(const time_t &start_time)
-{
-    time_t end_time;
-    gettimeofday(&end_time, NULL);
-
-    double local_dt = (end_time.tv_sec - start_time.tv_sec) + 1.0e-6 * (end_time.tv_usec - start_time.tv_usec);
-
-    unique_lock<mutex> l(this->lock);
-    total_dt += local_dt;
-
-    ix1++;
-    if (ix1 == nthreads) {
-	ix0 = ix2 = 0;
-	cond1.notify_all();
-    }
-    while (ix1 < nthreads)
-	cond1.wait(l);
-
-    double ret = total_dt / nthreads;
-
-    ix2++;
-    if (ix2 == nthreads) {
-	total_dt = 0.0;
-	ix0 = ix1 = 0;
-	cond2.notify_all();
-    }
-    while (ix2 < nthreads)
-	cond2.wait(l);
-
-    return ret;
-}
-
-
 int timing_thread_pool::get_and_increment_thread_id()
 {
-    lock_guard<mutex> l(lock);
-    return threads_so_far++;
+    lock_guard<mutex> l(thread_id_lock);
+    return curr_thread_id++;
+}
+
+
+double timing_thread_pool::wait_at_barrier(double t)
+{
+    unique_lock<mutex> l(barrier_lock);
+
+    barrier_tcurr += t;
+    barrier_count++;
+    
+    if (barrier_count == nthreads) {
+	barrier_tprev = barrier_tcurr;
+	barrier_tcurr = 0.0;
+	barrier_count = 0;
+	barrier_gen++;
+	barrier_cv.notify_all();
+	return barrier_tprev / nthreads;
+    }
+    
+    int g = barrier_gen;
+
+    while (barrier_gen == g)
+	barrier_cv.wait(l);
+
+    return barrier_tprev / nthreads;
 }
 
 
@@ -160,27 +134,43 @@ void timing_thread::_thread_main(timing_thread *t)
 
 void timing_thread::start_timer()
 {
-    if (timer_is_running)
-	throw runtime_error("double call to timing_thread::start_timer(), without call to stop_timer() in between");
-
-    this->timer_is_running = true;
-    this->start_time = pool->start_timer();
+    pool->wait_at_barrier();
+    
+    this->local_dt = 0.0;
+    this->unpause_timer();
 }
 
 
-double timing_thread::stop_timer(const char *name)
+void timing_thread::stop_timer(const char *name)
 {
-    if (!timer_is_running)
-	throw runtime_error("timing_thread::stop_timer() called without calling start_timer(), or double call to stop_timer()");
-
-    this->timer_is_running = false;
-
-    double ret = pool->stop_timer(start_time);
+    this->pause_timer();
+    this->global_dt = pool->wait_at_barrier(local_dt);
 
     if (name && !thread_id)
-	cout << (string(name) + ": " + to_string(ret) + " seconds\n");
+	cout << (string(name) + ": " + to_string(global_dt) + " seconds\n");
+}
 
-    return ret;
+
+void timing_thread::pause_timer()
+{
+    if (!timer_is_running)
+	throw runtime_error("timing_thread::stop_timer() or pause_timer() was called, but timer was already stopped");
+
+    struct timeval end_time;
+    gettimeofday(&end_time, NULL);
+
+    // Note "+=" here.
+    this->local_dt += (end_time.tv_sec - start_time.tv_sec) + 1.0e-6 * (end_time.tv_usec - start_time.tv_usec);
+    this->timer_is_running = false;
+}
+
+void timing_thread::unpause_timer()
+{
+    if (timer_is_running)
+	throw runtime_error("timing_thread::start_timer() or unpause_timer() was called, but timer is already running");
+    
+    gettimeofday(&this->start_time, NULL);
+    this->timer_is_running = true;
 }
 
 
@@ -494,14 +484,14 @@ void kernel_timing_thread::allocate()
 
 void kernel_timing_thread::stop_timer2(const char *kernel_name)
 {
-    double dt = this->stop_timer();
+    this->stop_timer();
     ssize_t nsamples = ssize_t(niter) * ssize_t(nfreq) * ssize_t(nt_chunk);
     
     if (thread_id == 0) {
 	cout << kernel_name << ": " << niter << " iterations,"
-	     << " total time " << dt << " sec"
-	     << " (" << (dt/niter) << " sec/iteration,"
-	     << " " << (1.0e9 * dt / nsamples) << " ns/sample)" << endl;
+	     << " total time " << global_dt << " sec"
+	     << " (" << (global_dt/niter) << " sec/iteration,"
+	     << " " << (1.0e9 * global_dt / nsamples) << " ns/sample)" << endl;
     }
 }
 
