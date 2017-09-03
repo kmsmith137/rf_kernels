@@ -65,7 +65,7 @@ struct wrms_kernel_table {
 
     wrms_kernel_table()
     {
-	_populate2<2,2> ();
+	_populate2<8,8> ();
     }
 } global_wrms_kernel_table;
 

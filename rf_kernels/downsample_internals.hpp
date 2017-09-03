@@ -6,6 +6,8 @@
 #include <simd_helpers/udsample.hpp>
 #include <simd_helpers/downsample.hpp>
 
+#include "downsample.hpp"
+
 
 namespace rf_kernels {
 #if 0
@@ -193,27 +195,30 @@ inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *
 			      
 // ----------------------------------------------------------------------------------------------------
 //
-// _wi_downsampler_0d_Dtsm<T,S,Df,Dt>::get(wi_out, w_out, intensity, weights, stride, Dt)
-// _wi_downsampler_0d_Dtlg<T,S,Df>::get(wi_out, w_out, intensity, weights, stride, Dt)
+// _wi_downsampler_0d<T, S, Df0, Dt> ds0(Dt_);
 //
-// These ingest shape-(Df,Dt*S) intensity and weights arrays, downsample, and
-// output length-S intensity and weights vectors.
+// simd_t<T,S> wi_out, w_out;
+// ds0.get(wi_out, w_out, i_in, w_in, stride);
 //
-// In the first case, Dt is a compile-time parameter, and Dt <= S.
-// In the second case, Dt is a runtime parameter, and Dt is a multiple of S.
-//
-// NOTE: they now accumulate their output!
+// We use the notation Df0 here to emphasize that in a higher-dimensional context, Df may not be equal to Df0!
 
 
-template<typename T_, int S_, int Df_, int Dt>
-struct _wi_downsampler_0d_Dtsm {
-    using T = T_;
-    static constexpr int S = S_;
-    static constexpr int Df = Df_;
+template<typename T, int S, int Df0, int Dt, bool Dt_Large = (Dt > S)>
+struct _wi_downsampler_0d;
 
+
+// Case 1: "small" Dt
+template<typename T, int S, int Df0, int Dt>
+struct _wi_downsampler_0d<T, S, Df0, Dt, false> 
+{
+    _wi_downsampler_0d(int Dt_)
+    {
+	if (__builtin_expect(Dt != Dt_, 0))
+	    throw std::runtime_error("rf_kernels internal error: \"small\" Dt mismatch in _wi_downsampler_0d");
+    }
+    
     constexpr int get_Dt() const { return Dt; }
 
-    
     template<int P, typename std::enable_if<(P==0),int>::type = 0>
     inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride) const
     { }
@@ -225,7 +230,7 @@ struct _wi_downsampler_0d_Dtsm {
 	
 	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
 	simd_t<T,S> w_acc = simd_t<T,S>::zero();
-	_wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
+	_wi_downsample_0a<Df0> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
 	
 	wi_ds.template put<P-1> (wi_acc);
 	w_ds.template put<P-1> (w_acc);
@@ -243,15 +248,18 @@ struct _wi_downsampler_0d_Dtsm {
 };
 
 
-template<typename T_, int S_, int Df_>
-struct _wi_downsampler_0d_Dtlg
+// Case 2: "Large" Dt
+template<typename T, int S, int Df0, int DtX>
+struct _wi_downsampler_0d<T, S, Df0, DtX, true>
 {
-    using T = T_;
-    static constexpr int S = S_;
-    static constexpr int Df = Df_;
-    
     const int Dt;
-    _wi_downsampler_0d_Dtlg(int Dt_) : Dt(Dt_) { }
+
+    _wi_downsampler_0d(int Dt_) : 
+	Dt(Dt_) 
+    { 
+	if (__builtin_expect((Dt_ <= S) || (Dt_ % S), 0))
+	    throw std::runtime_error("rf_kernels internal error: bad \"large\" Dt in _wi_downsampler_0d");
+    }
 
     inline int get_Dt() const { return Dt; }
 
@@ -267,7 +275,7 @@ struct _wi_downsampler_0d_Dtlg
 	
 	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
 	simd_t<T,S> w_acc = simd_t<T,S>::zero();
-	_wi_downsample_0a<Df> (wi_acc, w_acc, in_i + (P-1)*Dt, in_w + (P-1)*Dt, stride, Dt);
+	_wi_downsample_0a<Df0> (wi_acc, w_acc, in_i + (P-1)*Dt, in_w + (P-1)*Dt, stride, Dt);
 	
 	wi_ds.template put<P-1> (wi_acc);
 	w_ds.template put<P-1> (w_acc);    
@@ -287,22 +295,116 @@ struct _wi_downsampler_0d_Dtlg
 
 // -------------------------------------------------------------------------------------------------
 //
-// _wi_downsample_1d<T,S,Df,Dt,Iflag,Fflag> (i_out, w_out, nt_out, i_in, w_in, istride)
-// _wi_downsample_1d<T,S,Df,Iflag,Fflag> (i_out, w_out, nt_out, i_in, w_in, istride, Dt)
+// _wi_downsampler_1d<T, S, Df, Dt> ds1(Df_, Dt_);
 //
-// These ingest shape-(Df,Dt*nt_out) intensity arrays, downsample, and output
-// a length-nt_out array.
+// _wi_downsampler_1d_outbuf<T, S> out;
 //
-// In the first case, Dt is a compile-time parameter, and Dt <= S.
-// In the second case, Dt is a runtime parameter, and Dt is a multiple of S.
-//
-// The Iflag, Fflag arguments can be used if this is a "multi-pass" downsampling kernel.
-// In this case, Iflag is true if this is the first pass, and Fflag is true if this is
-// the last pass.
-//
-// Caller must check that nt_out is a multiple of S.  (Note that nt_in = nt_out * Dt).
+// downsample_1d(out, nt_out, in_i, in_w, stride);
 
 
+template<typename T, int S, int Df, int Dt, bool Df_Large = (Df > S)>
+struct _wi_downsampler_1d;
+
+
+// Case 1: "small" Df.
+template<typename T, int S, int Df, int DtX>
+struct _wi_downsampler_1d<T, S, Df, DtX, false> 
+{
+    const _wi_downsampler_0d<T, S, Df, DtX> ds0;
+
+    _wi_downsampler_1d(int Df_, int Dt_) :
+	ds0(Dt_)
+    {
+	if (__builtin_expect(Df != Df_, 0))
+	    throw std::runtime_error("rf_kernels internal error: \"small\" Df mismatch in _wi_downsampler_1d");
+    }
+
+    template<typename Tout>
+    inline void downsample_1d(Tout &out, int nt_out, const T *i_in, const T *w_in, int istride) const
+    {
+	const int Dt = ds0.get_Dt();
+	
+	simd_t<T,S> wival;
+	simd_t<T,S> wval;
+    
+	for (int it = 0; it < nt_out; it += S) {
+	    wival = simd_t<T,S>::zero();
+	    wval = simd_t<T,S>::zero();
+
+	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	    out.put(wival, wval, it);
+	}
+    }
+};
+
+
+// Case 2: "Large" Df.
+template<typename T, int S, int DfX, int DtX>
+struct _wi_downsampler_1d<T, S, DfX, DtX, true> 
+{
+    const _wi_downsampler_0d<T, S, S, DtX> ds0;
+    const int Df;
+    
+    _wi_downsampler_1d(int Df_, int Dt_) :
+	ds0(Dt_),
+	Df(Df_)
+    {
+	if (__builtin_expect((Df_ <= S) || (Df_ % S), 0))
+	    throw std::runtime_error("rf_kernels internal error: bad \"large\" Df in _wi_downsampler_1d");
+    }
+
+    template<typename Tout>
+    inline void downsample_1d(Tout &out, int nt_out, const T *i_in, const T *w_in, int istride) const
+    {
+	const int Dt = ds0.get_Dt();
+
+	T *i_out = out.i_out;
+	T *w_out = out.w_out;
+	
+	simd_t<T,S> wival;
+	simd_t<T,S> wval;
+
+	// First pass
+	for (int it = 0; it < nt_out; it += S) {
+	    wival = simd_t<T,S>::zero();
+	    wval = simd_t<T,S>::zero();
+
+	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	    wival.storeu(i_out + it);
+	    wval.storeu(w_out + it);
+	}
+
+	i_in += S*istride;
+	w_in += S*istride;
+	
+	// Middle passes
+	for (int i = S; i < (Df-S); i += S) {
+	    for (int it = 0; it < nt_out; it += S) {
+		wival.loadu(i_out + it);
+		wval.loadu(w_out + it);
+		
+		ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+		wival.storeu(i_out + it);
+		wval.storeu(w_out + it);
+	    }
+	    
+	    i_in += S*istride;
+	    w_in += S*istride;
+	}
+
+	// Last pass
+	for (int it = 0; it < nt_out; it += S) {
+	    wival.loadu(i_out + it);
+	    wval.loadu(w_out + it);
+	    
+	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	    out.put(wival, wval, it);
+	}
+    }
+};
+
+
+// 1D "outbuf" class
 template<typename T, int S>
 struct _wi_downsampler_1d_outbuf {
     T *i_out;
@@ -323,170 +425,25 @@ struct _wi_downsampler_1d_outbuf {
 };
 
 
-template<typename Tds0>
-struct _wi_downsampler_1d_Dfsm {    
-    using T = typename Tds0::T;
-    static constexpr int S = Tds0::S;
-
-    const Tds0 ds0;
-    
-    _wi_downsampler_1d_Dfsm(const Tds0 &ds0_) : ds0(ds0_) { }
-
-    constexpr int get_Df() const { return Tds0::Df; }
-
-    template<typename Tout>
-    inline void downsample_1d(Tout &out, int nt_out, const T *i_in, const T *w_in, int istride)
-    {
-	const int Dt = ds0.get_Dt();
-	
-	simd_t<T,S> wival;
-	simd_t<T,S> wval;
-    
-	for (int it = 0; it < nt_out; it += S) {
-	    wival = simd_t<T,S>::zero();
-	    wval = simd_t<T,S>::zero();
-
-	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
-	    out.put(wival, wval, it);
-	}
-    }
-};
-
-
-template<typename Tds0>
-struct _wi_downsampler_1d_Dflg {
-    using T = typename Tds0::T;
-    static constexpr int S = Tds0::S;
-    static constexpr int Df0 = Tds0::Df;
-
-    const Tds0 ds0;
-    const int Df;
-    
-    _wi_downsampler_1d_Dflg(const Tds0 &ds0_, int Df_) : ds0(ds0_), Df(Df_) { }
-
-    inline int get_Df() const { return Df; }
-
-    template<typename Tout>
-    inline void downsample_1d(Tout &out, int nt_out, const T *i_in, const T *w_in, int istride)
-    {
-	const int Dt = ds0.get_Dt();
-
-	T *i_out = out.i_out;
-	T *w_out = out.w_out;
-	
-	simd_t<T,S> wival;
-	simd_t<T,S> wval;
-
-	// First pass
-	for (int it = 0; it < nt_out; it += S) {
-	    wival = simd_t<T,S>::zero();
-	    wval = simd_t<T,S>::zero();
-
-	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
-	    wival.storeu(i_out + it);
-	    wval.storeu(w_out + it);
-	}
-
-	i_in += Df0*istride;
-	w_in += Df0*istride;
-	
-	// Middle passes
-	for (int i = Df0; i < (Df-Df0); i += Df0) {
-	    for (int it = 0; it < nt_out; it += S) {
-		wival.loadu(i_out + it);
-		wval.loadu(w_out + it);
-		
-		ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
-		wival.storeu(i_out + it);
-		wval.storeu(w_out + it);
-	    }
-	    
-	    i_in += Df0*istride;
-	    w_in += Df0*istride;
-	}
-
-	// Last pass
-	for (int it = 0; it < nt_out; it += S) {
-	    wival.loadu(i_out + it);
-	    wval.loadu(w_out + it);
-		
-	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
-	    out.put(wival, wval, it);
-	}
-    }
-};
-
-
 // -------------------------------------------------------------------------------------------------
 
 
-template<typename Tds1, typename T = typename Tds1::T, int S = Tds1::S>
-inline void _wi_downsample_2d(Tds1 &ds1, int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride)
+template<typename T, int S, int DfX, int DtX, typename std::enable_if<((DfX > 1) || (DtX > 1)),int>::type = 0>
+inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride)
 {
-    const int Df = ds1.get_Df();
-	
+    const int Df = dp->Df;
+    const _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, dp->Dt);
+    
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++) {
-	T *out_i2 = out_i + ifreq*ostride;
-	T *out_w2 = out_w + ifreq*ostride;
-	const T *in_i2 = in_i + ifreq*Df*istride;
-	const T *in_w2 = in_w + ifreq*Df*istride;
-
-	_wi_downsampler_1d_outbuf<T,S> out(out_i2, out_w2);
-	
-	ds1.downsample_1d(out, nt_out, in_i2, in_w2, istride);
-    }    
+	_wi_downsampler_1d_outbuf<T,S> out(out_i + ifreq*ostride, out_w + ifreq*ostride);
+	ds1.downsample_1d(out, nt_out, in_i + ifreq*Df*istride, in_w + ifreq*Df*istride, istride);
+    }
 }
 
 
-
-// -------------------------------------------------------------------------------------------------
-//
-// _wi_downsample_2d_Df_Dt<T,S,Df,Dt> (nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt)
-// _wi_downsample_2d_Df<T,S,Df> (nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt)
-// _wi_downsample_2d_Dt<T,S,Dt> (nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt)
-// _wi_downsample_2d<T,S> (nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride, Df, Dt)
-//
-// Caller must check that nt_out is divisible by S.
-
-
-template<typename T, int S, int Df, int Dt>
-inline void _wi_downsample_2d_Df_Dt(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df_, int Dt_)
-{
-    _wi_downsampler_0d_Dtsm<T,S,Df,Dt> ds0;
-    _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
-    _wi_downsample_2d(ds1, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride);
-}
-
-
-template<typename T, int S, int Df>
-inline void _wi_downsample_2d_Df(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df_, int Dt)
-{
-    _wi_downsampler_0d_Dtlg<T,S,Df> ds0(Dt);
-    _wi_downsampler_1d_Dfsm<decltype(ds0)> ds1(ds0);
-    _wi_downsample_2d(ds1, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride);
-}
-
-
-template<typename T, int S, int Dt>
-inline void _wi_downsample_2d_Dt(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df, int Dt_)
-{
-    _wi_downsampler_0d_Dtsm<T,S,S,Dt> ds0;
-    _wi_downsampler_1d_Dflg<decltype(ds0)> ds1(ds0, Df);
-    _wi_downsample_2d(ds1, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride);
-}
-
-
-template<typename T, int S>
-inline void _wi_downsample_2d(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df, int Dt)
-{
-    _wi_downsampler_0d_Dtlg<T,S,S> ds0(Dt);
-    _wi_downsampler_1d_Dflg<decltype(ds0)> ds1(ds0, Df);
-    _wi_downsample_2d(ds1, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride);
-}
-
-
-template<typename T>
-inline void _wi_downsample_2d_1_1(int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride, int Df, int Dt)
+// Special case (Df,Dt)=(1,1).
+template<typename T, int S, int DfX, int DtX, typename std::enable_if<((DfX == 1) && (DtX == 1)),int>::type = 0>
+inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride)
 {
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++)
 	memcpy(out_i + ifreq*ostride, in_i + ifreq*istride, nt_out * sizeof(T));

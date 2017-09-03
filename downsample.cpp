@@ -61,32 +61,6 @@ inline kernel_t get_kernel(int Df, int Dt)
 }
 
 
-template<int Df, int Dt> struct kernel
-{
-    static kernel_t get() { return kernel_wi_downsample_Df_Dt<float,8,Df,Dt>; }
-};
-
-template<int Df> struct kernel<Df,16>
-{
-    static kernel_t get() { return kernel_wi_downsample_Df<float,8,Df>; }
-};
-
-template<int Dt> struct kernel<16,Dt>
-{
-    static kernel_t get() { return kernel_wi_downsample_Dt<float,8,Dt>; }
-};
-
-template<> struct kernel<16,16>
-{
-    static kernel_t get() { return kernel_wi_downsample<float,8>; }
-};
-
-template<> struct kernel<1,1>
-{
-    static kernel_t get() { return kernel_wi_downsample_1_1<float>; }
-};
-
-
 template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
 inline void _populate1() { }
 
@@ -94,7 +68,7 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
-    kernel_table[{{Df,Dt}}] = kernel<Df,Dt>::get();
+    kernel_table[{{Df,Dt}}] = kernel_wi_downsample<float,8,Df,Dt>;
 }
 
 
