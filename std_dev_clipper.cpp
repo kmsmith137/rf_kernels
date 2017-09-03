@@ -20,56 +20,6 @@ namespace rf_kernels {
 
 
 // -------------------------------------------------------------------------------------------------
-//
-// Externally-linkable helper function, declared "extern" in kernels/std_dev_clippers.hpp.
-// If the arguments change here, then declaration should be changed there as well!
-
-
-void clip_1d(int n, float *tmp_sd, int *tmp_valid, double sigma)
-{
-#if 0
-    cerr << "clip_1d: [";
-    for (int i = 0; i < n; i++) {
-	if (tmp_valid[i])
-	    cerr << " " << tmp_sd[i];
-	else
-	    cerr << " -";
-    }
-    cerr << " ]\n";
-#endif
-
-    float acc0 = 0.0;
-    float acc1 = 0.0;
-    
-    for (int i = 0; i < n; i++) {
-	if (tmp_valid[i]) {
-	    acc0 += 1.0;
-	    acc1 += tmp_sd[i];
-	}
-    }
-    
-    if (acc0 < 1.5) {
-	memset(tmp_valid, 0, n * sizeof(int));
-	return;
-    }
-    
-    float mean = acc1 / acc0;
-    float acc2 = 0.0;
-    
-    for (int i = 0; i < n; i++)
-	if (tmp_valid[i])
-	    acc2 += square(tmp_sd[i] - mean);
-    
-    float stdv = sqrtf(acc2/acc0);
-    float thresh = sigma * stdv;
-
-    for (int i = 0; i < n; i++) {
-	if (fabs(tmp_sd[i] - mean) >= thresh)
-	    tmp_valid[i] = 0;
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
 
 
 // Inner namespace for the kernel table
@@ -79,8 +29,8 @@ namespace std_dev_clipper_table {
 }; // pacify emacs c-mode
 #endif
 
-// kernel(intensity, weights, nfreq, nt, stride, sigma, out_sd, out_valid, ds_int, ds_wt)
-using kernel_t = void (*)(const float *, float *, int, int, int, double, float *, int *, float *, float *);
+// kernel(sd, intensity, weights, stride)
+using kernel_t = void (*)(std_dev_clipper *sd, const float *, float *, int);
 
 // (axis, Df, Dt, two_pass) -> kernel
 static unordered_map<array<int,4>, kernel_t> kernel_table;
@@ -88,6 +38,12 @@ static unordered_map<array<int,4>, kernel_t> kernel_table;
 
 static kernel_t get_kernel(axis_type axis, int Df, int Dt, bool two_pass)
 {
+    if ((Df > 8) && (Df % 8 == 0))
+	Df = 16;
+    
+    if ((Dt > 8) && (Dt % 8 == 0))
+	Dt = 16;
+
     int t = two_pass ? 1 : 0;
     auto p = kernel_table.find({{axis,Df,Dt,t}});
     
@@ -110,10 +66,7 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    kernel_table[{{AXIS_FREQ,Df,Dt,false}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,false>;
-    kernel_table[{{AXIS_TIME,Df,Dt,false}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,false>;
-    kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = _kernel_std_dev_clip_freq_axis<float,8,Df,Dt,true>;
-    kernel_table[{{AXIS_TIME,Df,Dt,true}}] = _kernel_std_dev_clip_time_axis<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_TIME,Df,Dt,true}}] = kernel_std_dev_clipper<float,8,Df,Dt>;
 }
 
 
@@ -128,7 +81,7 @@ inline void _populate2()
 }
 
 struct _initializer {
-    _initializer() { _populate2<256,32>(); }
+    _initializer() { _populate2<16,16>(); }
 } _init;
 
 
@@ -163,32 +116,22 @@ std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, dou
     if (_unlikely(sigma < 1.0))
 	throw runtime_error("rf_kernels::std_dev_clipper: expected sigma >= 1");
 
-    // The sizes of the temporary buffers needed for the std_dev_clipper depend on its arguments.
-    //
-    // FIXME: the details of this logic are opaque and depend on chasing through kernels/*.hpp!
-    // It would be nice to have comments in these files which make it more transparent.
+    this->nfreq_ds = xdiv(nfreq, Df);
+    this->nt_ds = xdiv(nt_chunk, Dt);
 
-    int sd_nalloc = (axis == AXIS_FREQ) ? (nt_chunk/Dt) : (nfreq/Df);
-
-    this->sd = aligned_alloc<float> (sd_nalloc);
-    this->sd_valid = aligned_alloc<int> (sd_nalloc);
-
-    if (two_pass && ((Df > 1) || (Dt > 1))) {
-	this->ds_intensity = aligned_alloc<float> ((nfreq*nt_chunk) / (Df*Dt));
-	this->ds_weights = aligned_alloc<float> ((nfreq*nt_chunk) / (Df*Dt));
-    }
+    this->tmp_i = aligned_alloc<float> (nfreq_ds * nt_ds);
+    this->tmp_w = aligned_alloc<float> (nfreq_ds * nt_ds);
+    this->tmp_v = aligned_alloc<float> (max(nfreq_ds, nt_ds));
 }
 
 
 std_dev_clipper::~std_dev_clipper()
 {
-    free(sd);
-    free(sd_valid);
-    free(ds_intensity);
-    free(ds_weights);
+    free(tmp_i);
+    free(tmp_w);
+    free(tmp_v);
 
-    sd = ds_intensity = ds_weights = nullptr;
-    sd_valid = nullptr;
+    tmp_i = tmp_w = tmp_v = nullptr;
 }
    
 
@@ -199,7 +142,58 @@ void std_dev_clipper::clip(const float *intensity, float *weights, int stride)
     if (_unlikely(abs(stride) < nt_chunk))
 	throw runtime_error("rf_kernels::std_dev_clipper: stride is too small");
 
-    this->_f(intensity, weights, nfreq, nt_chunk, stride, sigma, sd, sd_valid, ds_intensity, ds_weights);
+    this->_f(this, intensity, weights, stride);
+}
+
+
+// Scalar helper called by kernel
+void std_dev_clipper::_clip_1d()
+{
+    int n = (axis == AXIS_TIME) ? nfreq_ds : nt_ds;
+
+#if 0
+    cout << "clip_1d top: [";
+    for (int i = 0; i < n; i++)
+	cout << " " << tmp_v[i];
+    cout << " ]\n";
+#endif
+
+    float acc0 = 0.0;
+    float acc1 = 0.0;
+    
+    for (int i = 0; i < n; i++) {
+	if (tmp_v[i] > 0.0) {
+	    acc0 += 1.0;
+	    acc1 += tmp_v[i];
+	}
+    }
+    
+    if (acc0 < 1.5) {
+	memset(tmp_v, 0, n * sizeof(float));
+	return;
+    }
+    
+    float mean = acc1 / acc0;
+    float acc2 = 0.0;
+    
+    for (int i = 0; i < n; i++)
+	if (tmp_v[i] > 0.0)
+	    acc2 += square(tmp_v[i] - mean);
+    
+    float stdv = sqrtf(acc2/acc0);
+    float thresh = sigma * stdv;
+
+    for (int i = 0; i < n; i++) {
+	if (fabs(tmp_v[i] - mean) >= thresh)
+	    tmp_v[i] = 0;
+    }
+
+#if 0
+    cout << "clip_1d bottom: [";
+    for (int i = 0; i < n; i++)
+	cout << " " << tmp_v[i];
+    cout << " ]\n";
+#endif
 }
 
 

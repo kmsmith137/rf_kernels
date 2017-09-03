@@ -145,8 +145,13 @@ static void reference_std_dev_clipper(const float *intensity, float *weights, in
 }
 
 
-static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt)
+static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt, bool two_pass)
 {
+#if 0
+    cout << "test_std_dev_clipper: nfreq=" << nfreq << ", nt=" << nt << ", stride=" << stride << ", axis=" << axis 
+	 << ", sigma=" << sigma << ", Df=" << Df << ", Dt=" << Dt << ", two_pass=" << two_pass << endl;
+#endif
+
     vector<float> in_i = vector<float> (nfreq * stride, 0.0);
     vector<float> in_w = vector<float> (nfreq * stride, 0.0);
 
@@ -165,12 +170,22 @@ static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int strid
     vector<float> in_w3 = in_w;
 
     // Fast kernel.
-    std_dev_clipper sd(nfreq, nt, axis, sigma, Df, Dt);
+    std_dev_clipper sd(nfreq, nt, axis, sigma, Df, Dt, two_pass);
     sd.clip(&in_i[0], &in_w[0], stride);
 
     // Reference kernels.
     reference_std_dev_clipper(&in_i[0], &in_w2[0], nfreq, nt, stride, axis, 0.999 * sigma, Df, Dt);
     reference_std_dev_clipper(&in_i[0], &in_w3[0], nfreq, nt, stride, axis, 1.001 * sigma, Df, Dt);
+
+#if 0
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int it = 0; it < nt; it++) {
+	    int i = ifreq * stride + it;
+	    cout << "    (ifreq,it) = (" << ifreq << "," << it << "): w_fast=" << in_w[i] 
+		 << ", w_ref1=" << in_w2[i] << ", w_ref2=" << in_w3[i] << endl;
+	}
+    }
+#endif
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
@@ -185,15 +200,16 @@ static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int strid
 static void test_std_dev_clipper(std::mt19937 &rng)
 {
     for (int iter = 0; iter < 1000; iter++) {
-	int Df = 1 << randint(rng, 0, 4);
-	int Dt = 1 << randint(rng, 0, 4);
+	int Df = 1 << randint(rng, 0, 7);
+	int Dt = 1 << randint(rng, 0, 7);
 	int nfreq = Df * randint(rng, 1, 17);
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
-	axis_type axis = randint(rng,0,2) ? AXIS_TIME : AXIS_FREQ;
+	axis_type axis = AXIS_TIME;  // FIXME
 	double sigma = uniform_rand(rng, 1.0, 1.5);
+	bool two_pass = true;   // FIXME
 	
-	test_std_dev_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt);
+	test_std_dev_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt, two_pass);
     }
 
     cout << "test_std_dev_clipper: pass" << endl;
@@ -205,9 +221,11 @@ static void test_std_dev_clipper(std::mt19937 &rng)
 
 int main(int argc, char **argv)
 {
-    std::random_device rd;
-    std::mt19937 rng(rd());
+    // std::random_device rd;
+    // std::mt19937 rng(rd());
+    std::mt19937 rng(23);
 
+    cout << "reminder: test-std-dev-clipper does not have complete generality yet" << endl;
     test_std_dev_clipper(rng);
 
     return 0;
