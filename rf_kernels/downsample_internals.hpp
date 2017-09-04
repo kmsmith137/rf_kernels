@@ -269,151 +269,227 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 
 // -------------------------------------------------------------------------------------------------
 //
-// _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
-// ds1.downsample_1f(out, nfreq, i_in, w_in, stride);
+// _wi_downsampler_0f<T, S, DfX, DtX> ds1(Df, Dt);
+// ds1.downsample_0f(out, nfreq, i_in, w_in, stride);
 //
 // where 'out' is a class which defines
 //   out.put(wival, wval, ifreq_ds)
 //
+// Note: _wi_downsampler_0e is a helper class which processes one row.
+//
 // FIXME: not sure if this is fastest.
+//
+// FIXME: might want to consider defining a "medium" _weight_upsampler_0e,
+//  if timings slow down at Dt=16.
 
 
-template<typename T, int S, int Dt, bool Dt_Large = (Dt > S)>
-struct _wi_downsampler_1f;
+template<typename T, int S, int DtX, bool Dt_Large = (DtX > S)>
+struct _wi_downsampler_0e;
+
+template<typename T, int S, int DfX, int DtX, bool Df_Large = (DfX > S)>
+struct _wi_downsampler_0f;
 
 
 // Case 1: "small" Dt.
 template<typename T, int S, int Dt>
-struct _wi_downsampler_1f<T, S, Dt, false>
+struct _wi_downsampler_0e<T, S, Dt, false>
 {
-    const int Df;
-
-    _wi_downsampler_1f(int Df_, int Dt_) :
-	Df(Df_)
+    static constexpr int D = Dt;
+	
+    _wi_downsampler_0e(int Dt_)
     {
 	if (__builtin_expect(Dt != Dt_, 0))
-	    throw std::runtime_error("rf_kernels: internal error: \"small\" Dt mismatch in _wi_downsampler_1f()");
+	    throw std::runtime_error("rf_kernels: internal error: \"small\" Dt mismatch in _wi_downsampler_0e()");
     }
 
 
-    template<int D, typename std::enable_if<(D==0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _accumulate_row(simd_ntuple<T,S,P> &wi_acc, simd_ntuple<T,S,P> &w_acc, const T *i_in, const T *w_in)
     { }
 
-    template<int D, typename std::enable_if<(D>0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _accumulate_row(simd_ntuple<T,S,P> &wi_acc, simd_ntuple<T,S,P> &w_acc, const T *i_in, const T *w_in)
     {
-	accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
+	_accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
 
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_in + (D-1)*S);
-	simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_in + (D-1)*S);
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_in + (P-1)*S);
+	simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_in + (P-1)*S);
 
 	wi_acc.x += wval * ival;
 	w_acc.x += wval;
     }
 
-
-    template<typename Tacc>
-    inline void downsample_1f(Tacc &acc, int nfreq_ds, int istride, const T *i_in, const T *w_in, T *i_out, T *w_out)
+    inline void accumulate_row(simd_ntuple<T,S,Dt> &wi_acc, simd_ntuple<T,S,Dt> &w_acc, const T *i_in, const T *w_in)
     {
-	const simd_t<T,S> zero = 0;
-	const simd_t<T,S> one = 1;
-
-	acc.ds_init();
-	
-	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	    simd_ntuple<T,S,Dt> wiacc;
-	    simd_ntuple<T,S,Dt> wacc;
-
-	    wiacc.loadu(i_in);
-	    wacc.loadu(w_in);
-	    wiacc *= wacc;
-
-	    for (int i = 1; i < Df; i++)
-		accumulate_row(wiacc, wacc, i_in + i*istride, w_in + i*istride);
-
-	    simd_t<T,S> wival = simd_downsample(wiacc);
-	    simd_t<T,S> wval = simd_downsample(wacc);
-	    
-	    // FIXME revisit after smask cleanup.
-	    simd_t<T,S> ival = wival / blendv(wval.compare_gt(zero), wval, one);
-	    ival.storeu(i_out + ifreq_ds*S);
-	    wval.storeu(w_out + ifreq_ds*S);	
-	    
-	    acc.ds_put(ival, wval, wival);
-
-	    i_in += Df * istride;
-	    w_in += Df * istride;
-	}
+	_accumulate_row(wi_acc, w_acc, i_in, w_in);
     }
 };
 
 
-// Case 2: "large" Dt.
+// Case 2: "large" Dt
 template<typename T, int S, int DtX>
-struct _wi_downsampler_1f<T, S, DtX, true>
+struct _wi_downsampler_0e<T, S, DtX, true>
 {
-    const int Df;
+    static constexpr int D = S;
     const int Dt;
 
-    _wi_downsampler_1f(int Df_, int Dt_) :
-	Df(Df_),
+    _wi_downsampler_0e(int Dt_) :
 	Dt(Dt_)
     {
 	if (__builtin_expect((Dt <= S) || (Dt % S), 0))
-	    throw std::runtime_error("rf_kernels: internal error: invalid \"large\" Dt in _wi_downsampler_1f()");
+	    throw std::runtime_error("rf_kernels: internal_error: invalid \"large\" Dt in _wi_downsampler_0e");
     }
 
 
-    template<int D, typename std::enable_if<(D==0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _accumulate_row(simd_ntuple<T,S,P> &wi_acc, simd_ntuple<T,S,P> &w_acc, const T *i_in, const T *w_in)
     { }
 
-    template<int D, typename std::enable_if<(D>0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _accumulate_row(simd_ntuple<T,S,P> &wi_acc, simd_ntuple<T,S,P> &w_acc, const T *i_in, const T *w_in)
     {
-	accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
+	_accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
 
 	for (int i = 0; i < Dt; i += S) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_in + (D-1)*Dt + i);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_in + (D-1)*Dt + i);
-
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_in + (P-1)*Dt + i);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_in + (P-1)*Dt + i);
+	    
 	    wi_acc.x += wval * ival;
 	    w_acc.x += wval;
 	}
     }
 
+    inline void accumulate_row(simd_ntuple<T,S,S> &wi_acc, simd_ntuple<T,S,S> &w_acc, const T *i_in, const T *w_in)
+    {
+	_accumulate_row(wi_acc, w_acc, i_in, w_in);
+    }
+};
+
+
+// Case 1: "small" Df
+template<typename T, int S, int Df, int DtX>
+struct _wi_downsampler_0f<T, S, Df, DtX, false>
+{
+    _wi_downsampler_0e<T, S, DtX> _ds;
     
+    _wi_downsampler_0f(int Df_, int Dt) :
+	_ds(Dt)
+    {
+	if (__builtin_expect(Df != Df_, 0))
+	    throw std::runtime_error("rf_kernels: internal error: \"small\" Df mismatch in _wi_downsampler_0f()");
+    }
+
+    inline constexpr int get_Df() const { return Df; }
+    
+
+    template<int P, int D, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    { }
+
+    template<int P, int D, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    {
+	_accumulate_rows<P-1> (wi_acc, w_acc, i_in, w_in, stride);
+	_ds.accumulate_row(wi_acc, w_acc, i_in + (P-1)*stride, w_in + (P-1)*stride);
+    }
+
+
+    inline void get(simd_t<T,S> &wival, simd_t<T,S> &wval, const T *i_in, const T *w_in, int stride)
+    {
+	constexpr int D = decltype(_ds)::D;
+
+	simd_ntuple<T,S,D> wi_acc, w_acc;
+	wi_acc.setzero();
+	w_acc.setzero();
+
+	_accumulate_rows<Df> (wi_acc, w_acc, i_in, w_in, stride);
+
+	wival = simd_downsample(wi_acc);
+	wval = simd_downsample(w_acc);
+    }
+};
+
+
+// Case 2: "large Df"
+template<typename T, int S, int DfX, int DtX>
+struct _wi_downsampler_0f<T, S, DfX, DtX, true>
+{
+    const int Df;
+    _wi_downsampler_0e<T, S, DtX> _ds;
+    
+    _wi_downsampler_0f(int Df_, int Dt) :
+	Df(Df_),
+	_ds(Dt)
+    {
+	if (__builtin_expect((Df <= S) || (Df % S), 0))
+	    throw std::runtime_error("rf_kernels: internal error: invalid \"large\" Df in _wi_downsampler_0f()");
+    }
+
+    
+    inline int get_Df() const { return Df; }
+
+    
+    template<int P, int D, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    { }
+
+    template<int P, int D, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    {
+	_accumulate_rows<P-1> (wi_acc, w_acc, i_in, w_in, stride);
+	_ds.accumulate_row(wi_acc, w_acc, i_in + (P-1)*stride, w_in + (P-1)*stride);
+    }
+
+    
+    inline void get(simd_t<T,S> &wival, simd_t<T,S> &wval, const T *i_in, const T *w_in, int stride)
+    {
+	constexpr int D = decltype(_ds)::D;
+
+	simd_ntuple<T,S,D> wi_acc, w_acc;
+	wi_acc.setzero();
+	w_acc.setzero();
+
+	for (int i = 0; i < Df; i += S)
+	    _accumulate_rows<S> (wi_acc, w_acc, i_in + i*stride, w_in + i*stride, stride);
+
+	wival = simd_downsample(wi_acc);
+	wval = simd_downsample(w_acc);
+    }
+};
+
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+template<typename T, int S, int DfX, int DtX>
+struct _wi_downsampler_1f {
+    _wi_downsampler_0f<T,S,DfX,DtX> ds0;
+
+    _wi_downsampler_1f(int Df, int Dt) :
+	ds0(Df, Dt)
+    { }
+
+
     template<typename Tacc>
     inline void downsample_1f(Tacc &acc, int nfreq_ds, int istride, const T *i_in, const T *w_in, T *i_out, T *w_out)
     {
+	const int Df = ds0.get_Df();
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
 
 	acc.ds_init();
 	
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	    simd_ntuple<T,S,S> wiacc;
-	    simd_ntuple<T,S,S> wacc;
-
-	    wiacc.setzero();
-	    wacc.setzero();
-
-	    for (int i = 0; i < Df; i++)
-		accumulate_row(wiacc, wacc, i_in + i*istride, w_in + i*istride);
-
-	    simd_t<T,S> wival = simd_downsample(wiacc);
-	    simd_t<T,S> wval = simd_downsample(wacc);
+	    simd_t<T,S> wival, wval;
+	    ds0.get(wival, wval, i_in + ifreq_ds*Df*istride, w_in + ifreq_ds*Df*istride, istride);
 	    
 	    // FIXME revisit after smask cleanup.
 	    simd_t<T,S> ival = wival / blendv(wval.compare_gt(zero), wval, one);
 	    ival.storeu(i_out + ifreq_ds*S);
 	    wval.storeu(w_out + ifreq_ds*S);	
-
+	    
 	    acc.ds_put(ival, wval, wival);
-
-	    i_in += Df * istride;
-	    w_in += Df * istride;
 	}
     }
 };

@@ -75,9 +75,9 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
     float *tmp_i = ic->tmp_i;
     float *tmp_w = ic->tmp_w;
     
-    _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
-    _wrms_buf_linear<T,S,false> out(tmp_i, tmp_w, nfreq_ds * S);
+    _wi_downsampler_1f<T, S, DfX, DtX> ds1(Df, Dt);
     _weight_upsampler_0f<T, S, DfX, DtX> us0(Df, Dt);
+    _wrms_buf_linear<T,S,false> out(tmp_i, tmp_w, nfreq_ds * S);
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {	
 	ds1.downsample_1f(out, nfreq_ds, stride,

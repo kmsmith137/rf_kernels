@@ -25,9 +25,7 @@ struct wrms_kernel_table {
 
     inline kernel_t get(axis_type axis, int Df, int Dt, bool two_pass)
     {
-	if ((axis == AXIS_FREQ) && (Df > 0))
-	    Df = 1;
-	else if ((Df > 8) && (Df % 8 == 0))
+	if ((Df > 8) && (Df % 8 == 0))
 	    Df = 16;
 
 	if ((Dt > 8) && (Dt % 8 == 0))
@@ -47,28 +45,27 @@ struct wrms_kernel_table {
 	return p->second;
     }
 
-	
-    template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
-    inline void _populate1() 
-    { 
-	kernel_table[{{AXIS_FREQ,1,Dt,1}}] = kernel_wrms_faxis<float,8,Dt>;
-    }
-
-    template<int Df, int Dt, typename enable_if<(Df>0),int>::type = 0>
-    inline void _populate1()
-    {
-	_populate1<(Df/2),Dt> ();
-	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms_taxis<float,8,Df,Dt>;
-    }
-
 
     template<int Df, int Dt, typename enable_if<(Dt==0),int>::type = 0>
-    inline void _populate2() { }
+    inline void _populate1() { }
     
     template<int Df, int Dt, typename enable_if<(Dt>0),int>::type = 0>
+    inline void _populate1()
+    {
+	_populate1<Df,(Dt/2)> ();
+	
+	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms_taxis<float,8,Df,Dt>;
+	kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = kernel_wrms_faxis<float,8,Df,Dt>;
+    }
+    
+
+    template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
+    inline void _populate2() { }
+    
+    template<int Df, int Dt, typename enable_if<(Df>0),int>::type = 0>
     inline void _populate2()
     {
-	_populate2<Df,(Dt/2)> ();
+	_populate2<(Df/2),Dt> ();
 	_populate1<Df,Dt> ();
     }
 

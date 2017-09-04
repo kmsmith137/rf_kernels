@@ -191,7 +191,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 }
 
 
-template<typename T, int S, int DtX>
+template<typename T, int S, int DfX, int DtX>
 inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     const int Df = wp->Df;
@@ -206,7 +206,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
     
-    _wi_downsampler_1f<T,S,DtX> ds1(Df, Dt);
+    _wi_downsampler_1f<T,S,DfX,DtX> ds1(Df, Dt);
     _wrms_buf_linear<T,S,false> out(tmp_i, tmp_w, nfreq_ds*S);
 
     for (int it = 0; it < nt_ds; it += S) {
