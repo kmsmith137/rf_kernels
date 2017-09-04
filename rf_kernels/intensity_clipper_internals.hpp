@@ -35,11 +35,8 @@ inline void kernel_intensity_clipper(const intensity_clipper *ic, const T *in_i,
     _weight_upsampler_0d<T, S, Dfu, DtX> us0(Dt);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	const T *in_i2 = in_i + ifreq_ds * Df * stride;
-	T *in_w2 = in_w + ifreq_ds * Df * stride;
-
 	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
-	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
+	ds1.downsample_1d(out, nt_ds, in_i + ifreq_ds*Df*stride, in_w + ifreq_ds*Df*stride, stride);
 
 	// Note iter_sigma here (not sigma)	
 	out.finalize(niter, iter_sigma);
@@ -47,12 +44,12 @@ inline void kernel_intensity_clipper(const intensity_clipper *ic, const T *in_i,
 	// Note sigma here (not iter_sigma)
 	simd_t<T,S> thresh = sigma * out.var.sqrt();
 
-	for (int ifrequ = 0; ifrequ < Df; ifrequ += Dfu) {
-	    T *in_w3 = in_w2 + ifrequ * stride;
+	for (int ifreq_u = ifreq_ds*Df; ifreq_u < (ifreq_ds+1)*Df; ifreq_u += Dfu) {
+	    T *wrow = in_w + ifreq_u * stride;
 
 	    for (int it = 0; it < nt_ds; it += S) {
 		simd_t<T,S> mask = out.get_mask(thresh, it);
-		us0.put_mask(in_w3 + it*Dt, stride, mask);
+		us0.put_mask(wrow + it*Dt, stride, mask);
 	    }
 	}
     }

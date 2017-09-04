@@ -162,13 +162,8 @@ inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_
     float *out_rms = wp->out_rms;
 
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
-	T *out_i2 = tmp_i + ifreq * nt_ds;
-	T *out_w2 = tmp_w + ifreq * nt_ds;
-	const T *in_i2 = in_i + ifreq * Df * stride;
-	const T *in_w2 = in_w + ifreq * Df * stride;
-
-	_wrms_1d_outbuf<T,S,AXIS_TIME> out(out_i2, out_w2, nt_ds);
-	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
+	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
+	ds1.downsample_1d(out, nt_ds, in_i + ifreq*Df*stride, in_w + ifreq*Df*stride, stride);
 
 	out.finalize(niter, sigma);
 
