@@ -48,15 +48,10 @@ struct _wrms_1d_outbuf {
 
 
     // Callback for _wi_downsampler.
-    inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int i)
+    inline void put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival)
     {
 	wisum += wival;
 	wsum += wval;
-	
-	// FIXME revisit after smask cleanup.
-	wival /= blendv(wval.compare_gt(zero), wval, one);
-	wival.storeu(i_out + A*i);
-	wval.storeu(w_out + A*i);	
     }
 
 
@@ -156,16 +151,21 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
     const int nt_ds = wp->nt_ds;
     const int niter = wp->niter;
     const simd_t<T,S> sigma = wp->sigma;
-    const _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
 
     float *tmp_i = wp->tmp_i;
     float *tmp_w = wp->tmp_w;
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
 
+    _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
+
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
 	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
-	ds1.downsample_1d(out, nt_ds, in_i + ifreq*Df*stride, in_w + ifreq*Df*stride, stride);
+	
+	ds1.downsample_1d(out, nt_ds, stride,
+			  in_i + ifreq * Df * stride,
+			  in_w + ifreq * Df * stride,
+			  tmp_i, tmp_w);
 
 	out.finalize(niter, sigma);
 
@@ -185,16 +185,21 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     const int nt_ds = wp->nt_ds;
     const int nfreq_ds = wp->nfreq_ds;
     const simd_t<T,S> sigma = wp->sigma;
-    const _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
 
     float *tmp_i = wp->tmp_i;
     float *tmp_w = wp->tmp_w;
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
+    
+    _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
 
     for (int it = 0; it < nt_ds; it += S) {
 	_wrms_1d_outbuf<T,S,AXIS_FREQ> out(tmp_i, tmp_w, nfreq_ds);
-	ds1.downsample_1f(out, nfreq_ds, in_i + it*Dt, in_w + it*Dt, stride);
+	
+	ds1.downsample_1f(out, nfreq_ds, stride,
+			  in_i + it*Dt,
+			  in_w + it*Dt,
+			  tmp_i, tmp_w);
 
 	out.finalize(niter, sigma);
 

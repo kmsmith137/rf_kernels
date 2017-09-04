@@ -36,7 +36,11 @@ inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T 
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
-	ds1.downsample_1d(out, nt_ds, in_i + ifreq_ds*Df*stride, in_w + ifreq_ds*Df*stride, stride);
+	
+	ds1.downsample_1d(out, nt_ds, stride,
+			  in_i + ifreq_ds * Df * stride,
+			  in_w + ifreq_ds * Df * stride,
+			  tmp_i, tmp_w);
 
 	// Note iter_sigma here (not sigma)	
 	out.finalize(niter, iter_sigma);
@@ -76,7 +80,11 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
 	_wrms_1d_outbuf<T,S,AXIS_FREQ> out(tmp_i, tmp_w, nfreq_ds);
-	ds1.downsample_1f(out, nfreq_ds, in_i + it_ds*Dt, in_w + it_ds*Dt, stride);
+	
+	ds1.downsample_1f(out, nfreq_ds, stride,
+			  in_i + it_ds * Dt,
+			  in_w + it_ds * Dt,
+			  tmp_i, tmp_w);
 
 	// Note iter_sigma here (not sigma)
 	out.finalize(niter, iter_sigma);
