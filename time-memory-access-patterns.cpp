@@ -91,6 +91,9 @@ inline void read_rows_2arr(int nfreq, int nt_chunk, int stride, const float *src
 }
 
 
+
+// -------------------------------------------------------------------------------------------------
+
 template<int N>
 inline void read_cols(int nfreq, int nt_chunk, int stride, const float *src)
 {
@@ -124,10 +127,74 @@ inline void update_cols(int nfreq, int nt_chunk, int stride, float *arr)
 }
 
 
+// -------------------------------------------------------------------------------------------------
+
+
+void mock_fclip_in_place(int niter, int nfreq, int nt_chunk, int stride, const float *i_in, float *w_in)
+{
+    simd_t<float,S> acc = 0;
+
+    for (int it = 0; it < nt_chunk; it += S) {
+	for (int iter = 0; iter < niter; iter++) {
+	    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+		simd_t<float,S> ival = simd_helpers::simd_load<float,S> (i_in + ifreq*stride + it);
+		simd_t<float,S> wval = simd_helpers::simd_load<float,S> (w_in + ifreq*stride + it);
+		acc += ival * wval;
+	    }
+	}
+	
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<float,S> ival = simd_helpers::simd_load<float,S> (i_in + ifreq*stride + it);
+	    simd_t<float,S> wval = simd_helpers::simd_load<float,S> (w_in + ifreq*stride + it);
+	    simd_helpers::simd_store(w_in + ifreq*stride + it, wval + acc*ival);
+	}
+    }	    
+}
+
+
+void mock_fclip_tmp(int niter, int nfreq, int nt_chunk, int stride, const float *i_in, float *w_in, float *i_tmp, float *w_tmp)
+{
+    simd_t<float,S> acc = 0;
+
+    for (int it = 0; it < nt_chunk; it += S) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<float,S> ival = simd_helpers::simd_load<float,S> (i_in + ifreq*stride + it);
+	    simd_t<float,S> wval = simd_helpers::simd_load<float,S> (w_in + ifreq*stride + it);
+	    acc += ival * wval;
+
+	    simd_helpers::simd_store(i_tmp + ifreq*S, ival);
+	    simd_helpers::simd_store(w_tmp + ifreq*S, wval);
+	}
+		 
+	for (int iter = 1; iter < niter; iter++) {
+	    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+		simd_t<float,S> ival = simd_helpers::simd_load<float,S> (i_tmp + ifreq*S);
+		simd_t<float,S> wval = simd_helpers::simd_load<float,S> (w_tmp + ifreq*S);
+		acc += ival * wval;
+	    }
+	}
+	
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+#if 1
+	    simd_t<float,S> ival = simd_helpers::simd_load<float,S> (i_in + ifreq*stride + it);
+	    simd_t<float,S> wval = simd_helpers::simd_load<float,S> (w_in + ifreq*stride + it);
+#else
+	    simd_t<float,S> ival = simd_helpers::simd_load<float,S> (i_tmp + ifreq*S);
+	    simd_t<float,S> wval = simd_helpers::simd_load<float,S> (w_tmp + ifreq*S);
+#endif
+	    simd_helpers::simd_store(w_in + ifreq*stride + it, wval + acc*ival);
+	}
+    }	    
+}
+
+
 struct memory_access_timing_thread : public kernel_timing_thread {
     memory_access_timing_thread(const shared_ptr<timing_thread_pool> &pool_, const kernel_timing_params &params_) :
 	kernel_timing_thread(pool_, params_)
     { }
+
+    float *i_tmp = nullptr;
+    float *w_tmp = nullptr;
 
     template<int N>
     inline void time_read_rows(const char *str)
@@ -165,6 +232,40 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 	this->stop_timer2(str);
     }
 
+    // This is a "mockup" of intensity_clipper(AXIS_FREQ).
+    void time_fclip(int ic_iter)
+    {
+	if (!this->i_tmp)
+	    this->i_tmp = aligned_alloc<float> (S * nfreq);
+	if (!this->w_tmp)
+	    this->w_tmp = aligned_alloc<float> (S * nfreq);
+	    
+	stringstream ss1;
+	ss1 << "mock_fclip_in_place(" << ic_iter << ")";
+	string s1 = ss1.str();
+	const char *cp1 = s1.c_str();
+	
+	stringstream ss2;
+	ss2 << "mock_fclip_tmp(" << ic_iter << ")";
+	string s2 = ss2.str();
+	const char *cp2 = s2.c_str();
+	
+	this->start_timer();
+
+ 	for (int iter = 0; iter < niter; iter++)
+	    mock_fclip_in_place(ic_iter, nfreq, nt_chunk, stride, intensity, weights);
+
+	this->stop_timer(cp1);
+
+	this->start_timer();
+
+ 	for (int iter = 0; iter < niter; iter++)
+	    mock_fclip_tmp(ic_iter, nfreq, nt_chunk, stride, intensity, weights, i_tmp, w_tmp);
+
+	this->stop_timer(cp2);
+		
+    }
+
     virtual void thread_body() override 
     {
 	rf_assert(nfreq % 16 == 0);
@@ -172,6 +273,9 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 
 	this->allocate();
 
+	for (int ic_iter = 1; ic_iter < 6; ic_iter++)
+	    time_fclip(ic_iter);
+	
 	this->time_read_rows<1> ("read_rows<1>");
 	this->time_read_rows<2> ("read_rows<2>");
 	this->time_read_rows<4> ("read_rows<4>");
