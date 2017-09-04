@@ -66,7 +66,8 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    kernel_table[{{AXIS_TIME,Df,Dt,true}}] = kernel_std_dev_clipper<float,8,Df,Dt>;
+    kernel_table[{{AXIS_TIME,Df,Dt,true}}] = kernel_std_dev_clipper_taxis<float,8,Df,Dt>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = kernel_std_dev_clipper_faxis<float,8,Df,Dt>;
 }
 
 
@@ -110,6 +111,10 @@ std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, dou
     if (_unlikely(nfreq % Df))
 	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq to be a multiple of Df");
 
+    // Assumed in kernel_std_dev_clipper_faxis(), see comment in rf_kernels/std_dev_clipper_internals.hpp.
+    if (_unlikely(nfreq % 8))
+	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq to be a multiple of 8");
+
     if (_unlikely(nt_chunk % (8*Dt)))
 	throw runtime_error("rf_kernels::std_dev_clipper: expected nfreq to be a multiple of 8*Dt");
 
@@ -119,9 +124,20 @@ std_dev_clipper::std_dev_clipper(int nfreq_, int nt_chunk_, axis_type axis_, dou
     this->nfreq_ds = xdiv(nfreq, Df);
     this->nt_ds = xdiv(nt_chunk, Dt);
 
-    this->tmp_i = aligned_alloc<float> (nfreq_ds * nt_ds);
-    this->tmp_w = aligned_alloc<float> (nfreq_ds * nt_ds);
-    this->tmp_v = aligned_alloc<float> (max(nfreq_ds, nt_ds));
+    if (axis == AXIS_FREQ) {
+	this->ntmp_wi = 8 * nfreq_ds;
+	this->ntmp_v = nt_ds;
+    }
+    else if (axis == AXIS_TIME) {
+	this->ntmp_wi = nt_ds;
+	this->ntmp_v = nfreq_ds;
+    }
+    else 
+	throw runtime_error("rf_kernels: internal error: bad axis in std_dev_clipper constructor");
+
+    this->tmp_i = aligned_alloc<float> (ntmp_wi);
+    this->tmp_w = aligned_alloc<float> (ntmp_wi);
+    this->tmp_v = aligned_alloc<float> (ntmp_v);
 }
 
 

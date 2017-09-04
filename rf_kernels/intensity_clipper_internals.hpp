@@ -74,9 +74,9 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
     _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
     _weight_upsampler_0d<T, S, 1, DtX> us0(Dt);  // FIXME to be improved soon!
 
-    for (int it = 0; it < nt_ds; it += S) {
+    for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
 	_wrms_1d_outbuf<T,S,AXIS_FREQ> out(tmp_i, tmp_w, nfreq_ds);
-	ds1.downsample_1f(out, nfreq_ds, in_i + it*Dt, in_w + it*Dt, stride);
+	ds1.downsample_1f(out, nfreq_ds, in_i + it_ds*Dt, in_w + it_ds*Dt, stride);
 
 	// Note iter_sigma here (not sigma)
 	out.finalize(niter, iter_sigma);
@@ -88,7 +88,7 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
 	    simd_t<T,S> mask = out.get_mask(thresh, ifreq_ds);
 
 	    for (int ifreq_us = ifreq_ds*Df; ifreq_us < (ifreq_ds+1)*Df; ifreq_us++)
-		us0.put_mask(in_w + ifreq_us*stride + it*Dt, stride, mask);
+		us0.put_mask(in_w + ifreq_us*stride + it_ds*Dt, stride, mask);
 	}
     }	
 }

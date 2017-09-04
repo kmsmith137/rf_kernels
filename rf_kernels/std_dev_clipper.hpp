@@ -32,6 +32,8 @@ struct std_dev_clipper {
 
     int nfreq_ds = 0;
     int nt_ds = 0;
+    int ntmp_wi = 0;
+    int ntmp_v = 0;
 
     // FIXME overkill?
     float *tmp_i = nullptr;  // (nfreq_ds * nt_ds)

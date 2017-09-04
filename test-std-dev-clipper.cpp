@@ -199,13 +199,13 @@ static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int strid
 
 static void test_std_dev_clipper(std::mt19937 &rng)
 {
-    for (int iter = 0; iter < 1000; iter++) {
-	int Df = 1 << randint(rng, 0, 7);
-	int Dt = 1 << randint(rng, 0, 7);
-	int nfreq = Df * randint(rng, 1, 17);
+    for (int iter = 0; iter < 300; iter++) {
+	int Df = 1 << randint(rng, 0, 6);
+	int Dt = 1 << randint(rng, 0, 6);
+	int nfreq = 8 * Df * randint(rng, 1, 17);  // FIXME
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
-	axis_type axis = AXIS_TIME;  // FIXME
+	axis_type axis = randint(rng, 0, 2) ? AXIS_FREQ : AXIS_TIME;
 	double sigma = uniform_rand(rng, 1.0, 1.5);
 	bool two_pass = true;   // FIXME
 	
@@ -221,9 +221,8 @@ static void test_std_dev_clipper(std::mt19937 &rng)
 
 int main(int argc, char **argv)
 {
-    // std::random_device rd;
-    // std::mt19937 rng(rd());
-    std::mt19937 rng(23);
+    std::random_device rd;
+    std::mt19937 rng(rd());
 
     cout << "reminder: test-std-dev-clipper does not have complete generality yet" << endl;
     test_std_dev_clipper(rng);
