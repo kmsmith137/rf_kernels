@@ -15,6 +15,7 @@ namespace rf_kernels {
 #endif
 
 template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
+template<typename T, int S, int N> using simd_ntuple = simd_helpers::simd_ntuple<T,S,N>;
 template<typename T, int S, int D> using simd_downsampler = simd_helpers::simd_downsampler<T,S,D>;
 
 
@@ -53,7 +54,7 @@ inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *
 			      
 // ----------------------------------------------------------------------------------------------------
 //
-// _wi_downsampler_0d<T, S, Df0, Dt> ds0(Dt_);
+// _wi_downsampler_0d<T, S, Df0, DtX> ds0(Dt);
 //
 // simd_t<T,S> wi_out, w_out;
 // ds0.get(wi_out, w_out, i_in, w_in, stride);
@@ -153,11 +154,10 @@ struct _wi_downsampler_0d<T, S, Df0, DtX, true>
 
 // -------------------------------------------------------------------------------------------------
 //
-// _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df_, Dt_);
-//
 // _wi_downsampler_1d_outbuf<T, S> out;
 //
-// downsample_1d(out, nt_out, in_i, in_w, stride);
+// _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
+// ds1.downsample_1d(out, nt_out, in_i, in_w, stride);
 
 
 template<typename T, int S, int Df, int Dt, bool Df_Large = (Df > S)>
@@ -262,7 +262,9 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 };
 
 
-// 1D "outbuf" class
+// 1D "outbuf" class.
+// Important note!  In the "large Df" case, the _wi_downsampler will populate i_out, w_out
+// with partially summed downsampled results.
 template<typename T, int S>
 struct _wi_downsampler_1d_outbuf {
     T *i_out;
@@ -279,6 +281,132 @@ struct _wi_downsampler_1d_outbuf {
 	wival /= blendv(wval.compare_gt(zero), wval, one);
 	wival.storeu(i_out + it);
 	wval.storeu(w_out + it);	
+    }
+};
+
+
+// -------------------------------------------------------------------------------------------------
+//
+// _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
+// ds1.downsample_1f(out, nfreq, i_in, w_in, stride);
+//
+// where 'out' is a class which defines
+//   out.put(wival, wval, ifreq_ds)
+//
+// FIXME: not sure if this is fastest.
+
+
+template<typename T, int S, int Dt, bool Dt_Large = (Dt > S)>
+struct _wi_downsampler_1f;
+
+
+// Case 1: "small" Dt.
+template<typename T, int S, int Dt>
+struct _wi_downsampler_1f<T, S, Dt, false>
+{
+    const int Df;
+
+    _wi_downsampler_1f(int Df_, int Dt_) :
+	Df(Df_)
+    {
+	if (__builtin_expect(Dt != Dt_, 0))
+	    throw std::runtime_error("rf_kernels: internal error: \"small\" Dt mismatch in _wi_downsampler_1f()");
+    }
+
+
+    template<int D, typename std::enable_if<(D==0),int>::type = 0>
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    { }
+
+    template<int D, typename std::enable_if<(D>0),int>::type = 0>
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    {
+	accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
+
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_in + (D-1)*S);
+	simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_in + (D-1)*S);
+
+	wi_acc.x += wval * ival;
+	w_acc.x += wval;
+    }
+
+
+    template<typename Tout>
+    inline void downsample_1f(Tout &out, int nfreq_ds, const T *i_in, const T *w_in, int stride)
+    {
+	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
+	    simd_ntuple<T,S,Dt> wiacc;
+	    simd_ntuple<T,S,Dt> wacc;
+
+	    wiacc.loadu(i_in);
+	    wacc.loadu(w_in);
+	    wiacc *= wacc;
+
+	    for (int i = 1; i < Df; i++)
+		accumulate_row(wiacc, wacc, i_in + i*stride, w_in + i*stride);
+
+	    out.put(simd_downsample(wiacc), simd_downsample(wacc), ifreq_ds);
+
+	    i_in += Df * stride;
+	    w_in += Df * stride;
+	}
+    }
+};
+
+
+// Case 2: "large" Dt.
+template<typename T, int S, int DtX>
+struct _wi_downsampler_1f<T, S, DtX, true>
+{
+    const int Dt;
+    const int Df;
+
+    _wi_downsampler_1f(int Df_, int Dt_) :
+	Df(Df_),
+	Dt(Dt_)
+    {
+	if (__builtin_expect((Dt <= S) || (Dt % S), 0))
+	    throw std::runtime_error("rf_kernels: internal error: invalid \"large\" Dt in _wi_downsampler_1f()");
+    }
+
+
+    template<int D, typename std::enable_if<(D==0),int>::type = 0>
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    { }
+
+    template<int D, typename std::enable_if<(D>0),int>::type = 0>
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    {
+	accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
+
+	for (int i = 0; i < Dt; i += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_in + (D-1)*Dt + i);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_in + (D-1)*Dt + i);
+
+	    wi_acc.x += wval * ival;
+	    w_acc.x += wval;
+	}
+    }
+
+
+    template<typename Tout>
+    inline void downsample_1f(Tout &out, int nfreq_ds, const T *i_in, const T *w_in, int stride)
+    {
+	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
+	    simd_ntuple<T,S,S> wiacc;
+	    simd_ntuple<T,S,S> wacc;
+
+	    wiacc.setzero();
+	    wacc.setzero();
+
+	    for (int i = 0; i < Df; i++)
+		accumulate_row(wiacc, wacc, i_in + i*stride, w_in + i*stride);
+
+	    out.put(simd_downsample(wiacc), simd_downsample(wacc), ifreq_ds);
+
+	    i_in += Df * stride;
+	    w_in += Df * stride;
+	}
     }
 };
 
