@@ -176,7 +176,9 @@ struct _wi_downsampler_1d<T, S, Df, DtX, false>
 	const int Dt = ds0.get_Dt();
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
-    
+
+	acc.ds_init();
+	
 	for (int it = 0; it < nt_out; it += S) {
 	    simd_t<T,S> wival = simd_t<T,S>::zero();
 	    simd_t<T,S> wval = simd_t<T,S>::zero();
@@ -187,7 +189,7 @@ struct _wi_downsampler_1d<T, S, Df, DtX, false>
 	    ival.storeu(i_out + it);
 	    wval.storeu(w_out + it);	
 
-	    acc.put(ival, wval, wival);
+	    acc.ds_put(ival, wval, wival);
 	}
     }
 };
@@ -218,6 +220,8 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 	simd_t<T,S> wival;
 	simd_t<T,S> wval;
 
+	acc.ds_init();
+	
 	// First pass
 	for (int it = 0; it < nt_out; it += S) {
 	    wival = simd_t<T,S>::zero();
@@ -257,7 +261,7 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 	    ival.storeu(i_out + it);
 	    wval.storeu(w_out + it);	
 
-	    acc.put(ival, wval, wival);
+	    acc.ds_put(ival, wval, wival);
 	}
     }
 };
@@ -315,6 +319,8 @@ struct _wi_downsampler_1f<T, S, Dt, false>
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
 
+	acc.ds_init();
+	
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_ntuple<T,S,Dt> wiacc;
 	    simd_ntuple<T,S,Dt> wacc;
@@ -334,7 +340,7 @@ struct _wi_downsampler_1f<T, S, Dt, false>
 	    ival.storeu(i_out + ifreq_ds*S);
 	    wval.storeu(w_out + ifreq_ds*S);	
 	    
-	    acc.put(ival, wval, wival);
+	    acc.ds_put(ival, wval, wival);
 
 	    i_in += Df * istride;
 	    w_in += Df * istride;
@@ -384,6 +390,8 @@ struct _wi_downsampler_1f<T, S, DtX, true>
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
 
+	acc.ds_init();
+	
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_ntuple<T,S,S> wiacc;
 	    simd_ntuple<T,S,S> wacc;
@@ -402,7 +410,7 @@ struct _wi_downsampler_1f<T, S, DtX, true>
 	    ival.storeu(i_out + ifreq_ds*S);
 	    wval.storeu(w_out + ifreq_ds*S);	
 
-	    acc.put(ival, wval, wival);
+	    acc.ds_put(ival, wval, wival);
 
 	    i_in += Df * istride;
 	    w_in += Df * istride;
@@ -417,7 +425,8 @@ struct _wi_downsampler_1f<T, S, DtX, true>
 template<typename T, int S>
 struct _dummy_wi_ds_accumulator
 {
-    inline void put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival) { }
+    inline void ds_init() { }
+    inline void ds_put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival) { }
 };
 
 

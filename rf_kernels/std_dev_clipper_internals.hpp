@@ -36,16 +36,15 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
     float *tmp_v = sd->tmp_v;
     
     _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
+    _wrms_buf_linear<T, S, true> out(tmp_i, tmp_w, nt_ds);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
-	
 	ds1.downsample_1d(out, nt_ds, stride,
 			  in_i + ifreq_ds * Df * stride,
 			  in_w + ifreq_ds * Df * stride,
 			  tmp_i, tmp_w);
 
-	out.finalize(1, out.zero);
+	out.finalize();
 	tmp_v[ifreq_ds] = out.var.template extract<0> ();
     }
 
@@ -75,17 +74,15 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
     float *tmp_v = sd->tmp_v;
 
     _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
+    _wrms_buf_linear<T, S, false> out(tmp_i, tmp_w, nfreq_ds * S);
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
-	_wrms_1d_outbuf<T,S,AXIS_FREQ> out(tmp_i, tmp_w, nfreq_ds);
-	
 	ds1.downsample_1f(out, nfreq_ds, stride,
 			  in_i + it_ds * Dt,
 			  in_w + it_ds * Dt,
 			  tmp_i, tmp_w);
 
-	// niter=1, sigma=zero (placeholder)
-	out.finalize(1, out.zero);
+	out.finalize();
 	simd_helpers::simd_store(tmp_v + it_ds, out.var);
     }
 

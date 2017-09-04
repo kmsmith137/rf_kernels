@@ -33,17 +33,17 @@ inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T 
     
     _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
     _weight_upsampler_0d<T, S, Dfu, DtX> us0(Dt);
+    _wrms_buf_linear<T,S,true> out(tmp_i, tmp_w, nt_ds);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
-	
 	ds1.downsample_1d(out, nt_ds, stride,
 			  in_i + ifreq_ds * Df * stride,
 			  in_w + ifreq_ds * Df * stride,
 			  tmp_i, tmp_w);
 
 	// Note iter_sigma here (not sigma)	
-	out.finalize(niter, iter_sigma);
+	out.finalize();
+	out.iterate(niter-1, iter_sigma);
 	
 	// Note sigma here (not iter_sigma)
 	simd_t<T,S> thresh = sigma * out.var.sqrt();
@@ -77,23 +77,23 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
     
     _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
     _weight_upsampler_0d<T, S, 1, DtX> us0(Dt);  // FIXME to be improved soon!
+    _wrms_buf_linear<T,S,false> out(tmp_i, tmp_w, nfreq_ds * S);
 
-    for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
-	_wrms_1d_outbuf<T,S,AXIS_FREQ> out(tmp_i, tmp_w, nfreq_ds);
-	
+    for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {	
 	ds1.downsample_1f(out, nfreq_ds, stride,
 			  in_i + it_ds * Dt,
 			  in_w + it_ds * Dt,
 			  tmp_i, tmp_w);
 
 	// Note iter_sigma here (not sigma)
-	out.finalize(niter, iter_sigma);
+	out.finalize();
+	out.iterate(niter-1, iter_sigma);
 	
 	// Note sigma here (not iter_sigma)
 	simd_t<T,S> thresh = sigma * out.var.sqrt();
 
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	    simd_t<T,S> mask = out.get_mask(thresh, ifreq_ds);
+	    simd_t<T,S> mask = out.get_mask(thresh, ifreq_ds*S);
 
 	    for (int ifreq_us = ifreq_ds*Df; ifreq_us < (ifreq_ds+1)*Df; ifreq_us++)
 		us0.put_mask(in_w + ifreq_us*stride + it_ds*Dt, stride, mask);
