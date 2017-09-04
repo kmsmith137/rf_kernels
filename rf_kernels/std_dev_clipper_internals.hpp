@@ -73,7 +73,7 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
     float *tmp_w = sd->tmp_w;
     float *tmp_v = sd->tmp_v;
 
-    _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
+    _wi_downsampler_1f<T, S, DfX, DtX> ds1(Df, Dt);
     _wrms_buf_linear<T, S, false> out(tmp_i, tmp_w, nfreq_ds * S);
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
