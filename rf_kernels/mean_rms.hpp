@@ -40,7 +40,8 @@ struct weighted_mean_rms {
     int nfreq_ds = 0;
     int nt_ds = 0;
     int nout = 0;
-    
+    int ntmp = 0;
+
     float *out_mean = nullptr;
     float *out_rms = nullptr;
     float *tmp_i = nullptr;  // shape (nfreq/Df, nt/Dt)

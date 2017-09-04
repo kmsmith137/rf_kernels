@@ -37,6 +37,7 @@ struct intensity_clipper {
 
     int nfreq_ds = 0;
     int nt_ds = 0;
+    int ntmp = 0;
 
     float *tmp_i = nullptr;
     float *tmp_w = nullptr;

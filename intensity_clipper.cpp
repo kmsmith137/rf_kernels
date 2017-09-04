@@ -63,7 +63,8 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper<float,8,AXIS_TIME,Df,Dt>;
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper_taxis<float,8,Df,Dt>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = kernel_intensity_clipper_faxis<float,8,Df,Dt>;
 }
 
 
@@ -135,23 +136,17 @@ intensity_clipper::intensity_clipper(int nfreq_, int nt_chunk_, axis_type axis_,
     // if ((Df==1) && (Dt==1))
     //return;   // no allocation necessary
 
-    int nds = 0;
-
     if (axis == AXIS_FREQ)
-	nds = nfreq_ds * 8;
+	this->ntmp = nfreq_ds * 8;
     else if (axis == AXIS_TIME)
-	nds = nt_ds;
+	this->ntmp = nt_ds;
     else if (axis == AXIS_NONE)
-	nds = nfreq_ds * nt_ds;
+	this->ntmp = nfreq_ds * nt_ds;
     else
 	throw runtime_error("rf_kernels internal error: bad axis in intensity_clipper constructor");
 
-    this->tmp_i = aligned_alloc<float> (nds);
-
-    if ((niter == 1) && !two_pass)
-	return;  // no ds_weights necessary
-    
-    this->tmp_w = aligned_alloc<float> (nds);
+    this->tmp_i = aligned_alloc<float> (ntmp);
+    this->tmp_w = aligned_alloc<float> (ntmp);
 }
 
 

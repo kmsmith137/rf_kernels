@@ -131,9 +131,9 @@ struct _wrms_1d_outbuf {
 
 
     // For intensity clipper!
-    inline simd_t<T,S> get_mask(simd_t<T,S> thresh, int it)
+    inline simd_t<T,S> get_mask(simd_t<T,S> thresh, int i)
     {
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + A*i);
 	ival -= mean;
 
 	simd_t<T,S> valid = (ival.abs() <= thresh);
@@ -146,8 +146,8 @@ struct _wrms_1d_outbuf {
 
 
 // Note: Still assuming two_pass=false.
-template<typename T, int S, axis_type axis, int DfX, int DtX, typename std::enable_if<(axis==AXIS_TIME),int>::type = 0>
-inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+template<typename T, int S, int DfX, int DtX>
+inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     const int Df = wp->Df;
     const int nfreq_ds = wp->nfreq_ds;
@@ -171,6 +171,34 @@ inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_
 	out_mean[ifreq] = out.mean.template extract<0> ();
 	out_rms[ifreq] = rms.template extract<0> ();
     }
+}
+
+
+template<typename T, int S, int DtX>
+inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+{
+    const int Df = wp->Df;
+    const int Dt = wp->Dt;
+    const int niter = wp->niter;
+    const int nt_ds = wp->nt_ds;
+    const int nfreq_ds = wp->nfreq_ds;
+    const simd_t<T,S> sigma = wp->sigma;
+    const _wi_downsampler_1f<T, S, DtX> ds1(Df, Dt);
+
+    float *tmp_i = wp->tmp_i;
+    float *tmp_w = wp->tmp_w;
+    float *out_mean = wp->out_mean;
+    float *out_rms = wp->out_rms;
+
+    for (int it = 0; it < nt_ds; it += S) {
+	_wrms_1d_outbuf<T,S,AXIS_FREQ> out(tmp_i, tmp_w, nfreq_ds);
+	ds1.downsample_1f(out, nfreq_ds, in_i + it*Dt, in_w + it*Dt, stride);
+
+	out.finalize(niter, sigma);
+
+	simd_helpers::simd_store(out_mean + it, out.mean);
+	simd_helpers::simd_store(out_rms + it, out.var.sqrt());
+    }	
 }
 
 

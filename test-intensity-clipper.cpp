@@ -97,6 +97,11 @@ static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in
 
 static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, bool two_pass)
 {
+#if 0
+    cout << "test_wrms(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride << ",axis=" << axis
+	 << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma << ",two_pass=" << two_pass << endl;
+#endif
+
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt_chunk, Dt);
     
@@ -138,6 +143,11 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 
     // Step 3: run reference wrms kernel.  Note that the reference kernel gets to assume (Df,Dt,niter) = (1,1,1).
     reference_wrms(&ref_mean[0], &ref_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds);
+
+#if 0
+    for (int i = 0; i < nout; i++)
+	cout << "    " << i << " " << wrms.out_mean[i] << " " << ref_mean[i] << " " << wrms.out_rms[i] << " " << ref_rms[i] << endl;
+#endif
 
     // Step 4: compare outputs!    
     for (int i = 0; i < nout; i++) {
@@ -240,9 +250,9 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
     cout << "test_rms(niter_min=" << niter_min << ",niter_max=" << niter_max << "): start" << endl;
 
     for (int iouter = 0; iouter < 300; iouter++) {
-	axis_type axis = AXIS_TIME;  // FIXME
-	int Df = 1 << randint(rng, 0, 2);  // FIXME
-	int Dt = 1 << randint(rng, 0, 2);  // FIXME
+	axis_type axis = randint(rng,0,2) ? AXIS_FREQ : AXIS_TIME;  // FIXME
+	int Df = 1 << randint(rng, 0, 7);
+	int Dt = 1 << randint(rng, 0, 7);
 	int niter = randint(rng, niter_min, niter_max+1);
 	int nfreq = Df * randint(rng, 1, 17);
 	int nt = 8 * Dt * randint(rng, 1, 17);
@@ -260,9 +270,9 @@ static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_m
     cout << "test_intensity_clipper(niter_min=" << niter_min << ",niter_max=" << niter_max << "): start" << endl;
 
     for (int iouter = 0; iouter < 300; iouter++) {
-	axis_type axis = AXIS_TIME;  // FIXME
-	int Df = 1 << randint(rng, 0, 7);  // FIXME
-	int Dt = 1 << randint(rng, 0, 7);  // FIXME
+	axis_type axis = randint(rng,0,2) ? AXIS_FREQ : AXIS_TIME;  // FIXME
+	int Df = 1 << randint(rng, 0, 7);
+	int Dt = 1 << randint(rng, 0, 7);
 	int niter = randint(rng, niter_min, niter_max+1);
 	int nfreq = Df * randint(rng, 1, 17);
 	int nt = 8 * Dt * randint(rng, 1, 17);

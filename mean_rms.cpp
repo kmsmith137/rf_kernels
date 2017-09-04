@@ -25,7 +25,9 @@ struct wrms_kernel_table {
 
     inline kernel_t get(axis_type axis, int Df, int Dt, bool two_pass)
     {
-	if ((Df > 8) && (Df % 8 == 0))
+	if ((axis == AXIS_FREQ) && (Df > 0))
+	    Df = 1;
+	else if ((Df > 8) && (Df % 8 == 0))
 	    Df = 16;
 
 	if ((Dt > 8) && (Dt % 8 == 0))
@@ -46,25 +48,27 @@ struct wrms_kernel_table {
     }
 
 	
-    // Helpers for constructor
-    template<int Df, int Dt, typename enable_if<(Dt==0),int>::type = 0>
-    inline void _populate1() { }
-
-    template<int Df, int Dt, typename enable_if<(Dt>0),int>::type = 0>
-    inline void _populate1()
-    {
-	_populate1<Df,(Dt/2)> ();
-
-	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms<float,8,AXIS_TIME,Df,Dt>;
+    template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
+    inline void _populate1() 
+    { 
+	kernel_table[{{AXIS_FREQ,1,Dt,1}}] = kernel_wrms_faxis<float,8,Dt>;
     }
 
-    template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
+    template<int Df, int Dt, typename enable_if<(Df>0),int>::type = 0>
+    inline void _populate1()
+    {
+	_populate1<(Df/2),Dt> ();
+	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms_taxis<float,8,Df,Dt>;
+    }
+
+
+    template<int Df, int Dt, typename enable_if<(Dt==0),int>::type = 0>
     inline void _populate2() { }
     
-    template<int Df, int Dt, typename enable_if<(Df>0),int>::type = 0>
+    template<int Df, int Dt, typename enable_if<(Dt>0),int>::type = 0>
     inline void _populate2()
     {
-	_populate2<(Df/2),Dt> ();
+	_populate2<Df,(Dt/2)> ();
 	_populate1<Df,Dt> ();
     }
 
@@ -104,20 +108,30 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
     
     if (_unlikely((niter > 1) && sigma < 1.0))
 	throw runtime_error("rf_kernels::weighted_mean_rms: expected sigma >= 1.0");
-
-    // Temporary!
-    rf_assert(axis == AXIS_TIME);
-    rf_assert(two_pass == true);
     
     this->nfreq_ds = xdiv(nfreq, Df);
     this->nt_ds = xdiv(nt_chunk, Dt);
-    this->nout = nfreq_ds;
+
+    if (axis == AXIS_FREQ) {
+	this->nout = nt_ds;
+	this->ntmp = nfreq_ds * 8;
+    }
+    else if (axis == AXIS_TIME) {
+	this->nout = nfreq_ds;
+	this->ntmp = nt_ds;
+    }
+    else if (axis == AXIS_NONE) {
+	this->nout = 1;
+	this->ntmp = nfreq_ds * nt_ds;
+    }
+    else
+	throw runtime_error("rf_kernels internal error: bad axis in mean_rms constructor");
 
     // FIXME overallocated?
     this->out_mean = aligned_alloc<float> (nout);
     this->out_rms = aligned_alloc<float> (nout);
-    this->tmp_i = aligned_alloc<float> (nfreq_ds * nt_ds);
-    this->tmp_w = aligned_alloc<float> (nfreq_ds * nt_ds);
+    this->tmp_i = aligned_alloc<float> (ntmp);
+    this->tmp_w = aligned_alloc<float> (ntmp);
 }
 
 

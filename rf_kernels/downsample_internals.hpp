@@ -315,11 +315,11 @@ struct _wi_downsampler_1f<T, S, Dt, false>
 
 
     template<int D, typename std::enable_if<(D==0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in) const
     { }
 
     template<int D, typename std::enable_if<(D>0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in) const
     {
 	accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
 
@@ -332,7 +332,7 @@ struct _wi_downsampler_1f<T, S, Dt, false>
 
 
     template<typename Tout>
-    inline void downsample_1f(Tout &out, int nfreq_ds, const T *i_in, const T *w_in, int stride)
+    inline void downsample_1f(Tout &out, int nfreq_ds, const T *i_in, const T *w_in, int stride) const
     {
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_ntuple<T,S,Dt> wiacc;
@@ -358,8 +358,8 @@ struct _wi_downsampler_1f<T, S, Dt, false>
 template<typename T, int S, int DtX>
 struct _wi_downsampler_1f<T, S, DtX, true>
 {
-    const int Dt;
     const int Df;
+    const int Dt;
 
     _wi_downsampler_1f(int Df_, int Dt_) :
 	Df(Df_),
@@ -371,11 +371,11 @@ struct _wi_downsampler_1f<T, S, DtX, true>
 
 
     template<int D, typename std::enable_if<(D==0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in) const
     { }
 
     template<int D, typename std::enable_if<(D>0),int>::type = 0>
-    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in)
+    inline void accumulate_row(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in) const
     {
 	accumulate_row(wi_acc.v, w_acc.v, i_in, w_in);
 
@@ -390,7 +390,7 @@ struct _wi_downsampler_1f<T, S, DtX, true>
 
 
     template<typename Tout>
-    inline void downsample_1f(Tout &out, int nfreq_ds, const T *i_in, const T *w_in, int stride)
+    inline void downsample_1f(Tout &out, int nfreq_ds, const T *i_in, const T *w_in, int stride) const
     {
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_ntuple<T,S,S> wiacc;
