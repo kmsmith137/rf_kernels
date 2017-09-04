@@ -56,6 +56,7 @@ struct wrms_kernel_table {
 	
 	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms_taxis<float,8,Df,Dt>;
 	kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = kernel_wrms_faxis<float,8,Df,Dt>;
+	kernel_table[{{AXIS_NONE,Df,Dt,1}}] = kernel_wrms_naxis<float,8,Df,Dt>;
     }
     
 

@@ -39,6 +39,8 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
     _wrms_buf_linear<T, S, true> out(tmp_i, tmp_w, nt_ds);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
+	out.initialize();
+	
 	ds1.downsample_1d(out, nt_ds, stride,
 			  in_i + ifreq_ds * Df * stride,
 			  in_w + ifreq_ds * Df * stride,
@@ -77,6 +79,8 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
     _wrms_buf_linear<T, S, false> out(tmp_i, tmp_w, nfreq_ds * S);
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
+	out.initialize();
+	
 	ds1.downsample_1f(out, nfreq_ds, stride,
 			  in_i + it_ds * Dt,
 			  in_w + it_ds * Dt,

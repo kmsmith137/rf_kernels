@@ -177,8 +177,6 @@ struct _wi_downsampler_1d<T, S, Df, DtX, false>
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
 
-	acc.ds_init();
-	
 	for (int it = 0; it < nt_out; it += S) {
 	    simd_t<T,S> wival = simd_t<T,S>::zero();
 	    simd_t<T,S> wval = simd_t<T,S>::zero();
@@ -220,8 +218,6 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 	simd_t<T,S> wival;
 	simd_t<T,S> wval;
 
-	acc.ds_init();
-	
 	// First pass
 	for (int it = 0; it < nt_out; it += S) {
 	    wival = simd_t<T,S>::zero();
@@ -478,8 +474,6 @@ struct _wi_downsampler_1f {
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
 
-	acc.ds_init();
-	
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_t<T,S> wival, wval;
 	    ds0.get(wival, wval, i_in + ifreq_ds*Df*istride, w_in + ifreq_ds*Df*istride, istride);
@@ -501,7 +495,6 @@ struct _wi_downsampler_1f {
 template<typename T, int S>
 struct _dummy_wi_ds_accumulator
 {
-    inline void ds_init() { }
     inline void ds_put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival) { }
 };
 

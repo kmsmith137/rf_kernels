@@ -35,11 +35,11 @@ struct _wrms_buf_linear {
     T *w_buf;
     const int bufsize;
     
-    simd_t<T,S> wisum;
-    simd_t<T,S> wsum;
+    simd_t<T,S> wisum = 0;
+    simd_t<T,S> wsum = 0;
     
-    simd_t<T,S> mean;
-    simd_t<T,S> var;
+    simd_t<T,S> mean = 0;
+    simd_t<T,S> var = 0;
 
 
     _wrms_buf_linear(T *i_buf_, T *w_buf_, int bufsize) : 
@@ -49,8 +49,8 @@ struct _wrms_buf_linear {
     { }
 
 
-    // Callback for _wi_downsampler.
-    inline void ds_init()
+    // Called before _wi_downsapler.
+    inline void initialize()
     {
 	wsum = simd_t<T,S>::zero();
 	wisum = simd_t<T,S>::zero();
@@ -175,7 +175,9 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
     _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
     _wrms_buf_linear<T,S,true> out(tmp_i, tmp_w, nt_ds);
 	
-    for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {	
+    for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
+	out.initialize();
+	
 	ds1.downsample_1d(out, nt_ds, stride,
 			  in_i + ifreq * Df * stride,
 			  in_w + ifreq * Df * stride,
@@ -210,6 +212,8 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     _wrms_buf_linear<T,S,false> out(tmp_i, tmp_w, nfreq_ds*S);
 
     for (int it = 0; it < nt_ds; it += S) {
+	out.initialize();
+	
 	ds1.downsample_1f(out, nfreq_ds, stride,
 			  in_i + it*Dt,
 			  in_w + it*Dt,
@@ -221,6 +225,40 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 	simd_helpers::simd_store(out_mean + it, out.mean);
 	simd_helpers::simd_store(out_rms + it, out.var.sqrt());
     }	
+}
+
+
+template<typename T, int S, int DfX, int DtX>
+inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+{
+    const int Df = wp->Df;
+    const int nfreq_ds = wp->nfreq_ds;
+    const int nt_ds = wp->nt_ds;
+    const int niter = wp->niter;
+    const simd_t<T,S> sigma = wp->sigma;
+
+    float *tmp_i = wp->tmp_i;
+    float *tmp_w = wp->tmp_w;
+    float *out_mean = wp->out_mean;
+    float *out_rms = wp->out_rms;
+
+    _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
+    _wrms_buf_linear<T,S,true> out(tmp_i, tmp_w, nfreq_ds * nt_ds);
+    
+    for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {	
+	ds1.downsample_1d(out, nt_ds, stride,
+			  in_i + ifreq * Df * stride,
+			  in_w + ifreq * Df * stride,
+			  tmp_i + ifreq * nt_ds,
+			  tmp_w + ifreq * nt_ds);
+    }
+    
+    out.finalize();
+    out.iterate(niter-1, sigma);
+
+    simd_t<T,S> rms = out.var.sqrt();
+    out_mean[0] = out.mean.template extract<0> ();
+    out_rms[0] = rms.template extract<0> ();
 }
 
 
