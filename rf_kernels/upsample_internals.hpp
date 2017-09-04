@@ -17,6 +17,7 @@ namespace rf_kernels {
 #endif
 
 template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
+template<typename T, int S, int N> using simd_ntuple = simd_helpers::simd_ntuple<T,S,N>;
 template<typename T, int S, int D> using simd_upsampler = simd_helpers::simd_upsampler<T,S,D>;
 
 
@@ -117,6 +118,179 @@ struct _weight_upsampler_0d<T, S, Df0, DtX, true>
 	_put_mask_partial<S> (w_out, simd_upsampler<T,S,S>(mask), stride);
     }
 };
+
+
+// -------------------------------------------------------------------------------------------------
+//
+// _weight_upsampler_0f<T, S, DfX, DtX> us0(Df, Dt)
+//
+// simd_t<T,S>
+// us0.put_mask(w_out, stride, mask)
+//
+// Note: _weight_upsampler_0e is a helper class which masks one row.
+//
+// FIXME: might want to consider defining a "medium" _weight_upsampler_0e,
+//  if timings slow down at Dt=16.
+
+
+template<typename T, int S, int DtX, bool Dt_Large = (DtX > S)>
+struct _weight_upsampler_0e;
+
+template<typename T, int S, int DfX, int DtX, bool Df_Large = (DfX > S)>
+struct _weight_upsampler_0f;
+
+
+// Case 1: "Small" Dt.
+template<typename T, int S, int Dt>
+struct _weight_upsampler_0e<T, S, Dt, false>
+{
+    static constexpr int U = Dt;
+    
+    _weight_upsampler_0e(int Dt_)
+    {
+	if (__builtin_expect(Dt != Dt_, 0))
+	    throw std::runtime_error("rf_kernels: internal error: \"small\" Dt mismatch in _weight_upsampler_0e");
+    }
+    
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_ntuple<T,S,Dt> &mask)
+    { }
+    
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_ntuple<T,S,Dt> &mask)
+    {
+	_put_mask_partial<P-1> (wp, mask);
+
+	T *p = wp + (P-1)*S;
+	simd_t<T,S> m = mask.template extract<P-1> ();
+	simd_t<T,S> x = simd_helpers::simd_load<T,S> (p);
+	simd_helpers::simd_store(p, m & x);
+    }
+    
+    inline void put_mask(T *wp, const simd_ntuple<T,S,Dt> &mask)
+    {
+	_put_mask_partial<Dt> (wp, mask);
+    }
+};
+
+
+// Case 2: "Large" Dt.
+template<typename T, int S, int DtX>
+struct _weight_upsampler_0e<T, S, DtX, true>
+{
+    static constexpr int U = S;
+    const int Dt;
+
+    _weight_upsampler_0e(int Dt_) :
+	Dt(Dt_)
+    {
+	if (__builtin_expect((Dt <= S) || (Dt % S), 0))
+	    throw std::runtime_error("rf_kernels: internal error: invalid \"large\" Dt in _weight_upsampler_0e");
+    }
+
+    template<int P, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_ntuple<T,S,S> &mask)
+    { }
+    
+    template<int P, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, const simd_ntuple<T,S,S> &mask)
+    {
+	_put_mask_partial<P-1> (wp, mask);
+
+	T *p = wp + (P-1)*Dt;
+	simd_t<T,S> m = mask.template extract<P-1> ();
+
+	for (int i = 0; i < Dt; i += S) {
+	    simd_t<T,S> x = simd_helpers::simd_load<T,S> (p+i);
+	    simd_helpers::simd_store(p+i, m & x);
+	}
+    }
+    
+    inline void put_mask(T *wp, const simd_ntuple<T,S,S> &mask)
+    {
+	_put_mask_partial<S> (wp, mask);
+    }
+};
+
+
+// Case 1: "Small" Df.
+template<typename T, int S, int Df, int DtX>
+struct _weight_upsampler_0f<T, S, Df, DtX, false>
+{
+    _weight_upsampler_0e<T,S,DtX> _us;
+    
+    _weight_upsampler_0f(int Df_, int Dt) :
+	_us(Dt)
+    {
+	if (__builtin_expect(Df != Df_, 0))
+	    throw std::runtime_error("rf_kernels: internal error: \"small\" Df mismatch in _weight_upsampler_0f");
+    }
+
+    
+    template<int P, int U, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, int stride, const simd_ntuple<T,S,U> &mask)
+    { }
+    
+    template<int P, int U, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, int stride, const simd_ntuple<T,S,U> &mask)
+    {
+	_put_mask_partial<P-1> (wp, stride, mask);
+	_us.put_mask(wp + (P-1)*stride, mask);
+    }
+
+    
+    inline void put_mask(T *wp, int stride, simd_t<T,S> mask)
+    {
+	static constexpr int U = decltype(_us)::U;
+	
+	simd_ntuple<T,S,U> m;
+	simd_upsample(m, mask);
+	
+	_put_mask_partial<Df> (wp, stride, m);
+    }
+};
+
+
+// Case 2: "Large" Df.
+template<typename T, int S, int DfX, int DtX>
+struct _weight_upsampler_0f<T, S, DfX, DtX, true>
+{
+    const int Df;
+    _weight_upsampler_0e<T,S,DtX> _us;
+    
+    _weight_upsampler_0f(int Df_, int Dt) :
+	Df(Df_),
+	_us(Dt)
+    {
+	if (__builtin_expect((Df <= S) || (Df % S), 0))
+	    throw std::runtime_error("rf_kernels: internal error: invalid \"large\" Df in _weight_upsampler_0f");
+    }
+
+    
+    template<int P, int U, typename std::enable_if<(P==0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, int stride, const simd_ntuple<T,S,U> &mask)
+    { }
+    
+    template<int P, int U, typename std::enable_if<(P>0),int>::type = 0>
+    inline void _put_mask_partial(T *wp, int stride, const simd_ntuple<T,S,U> &mask)
+    {
+	_put_mask_partial<P-1> (wp, stride, mask);
+	_us.put_mask(wp + (P-1)*stride, mask);
+    }
+
+    
+    inline void put_mask(T *wp, int stride, simd_t<T,S> mask)
+    {
+	static constexpr int U = decltype(_us)::U;
+	
+	simd_ntuple<T,S,U> m;
+	simd_upsample(m, mask);
+
+	for (int i = 0; i < Df; i += S)
+	    _put_mask_partial<S> (wp + i*stride, stride, m);
+    }
+};
+
 
 
 // -------------------------------------------------------------------------------------------------

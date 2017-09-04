@@ -295,7 +295,7 @@ int main(int argc, char **argv)
     std::mt19937 rng(rd());
 
     cout << "reminder: test-intensity-clipper does not have complete generality yet" << endl;
-
+    
     test_wrms(rng, 1, 1);
     test_intensity_clipper(rng, 1, 1);
 
