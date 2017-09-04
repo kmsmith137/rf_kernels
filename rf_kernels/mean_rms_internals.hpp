@@ -18,17 +18,20 @@ namespace rf_kernels {
 template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 
 
-// Currently assume AXIS_TIME
 // Currently assume two_pass=true
-template<typename T, int S>
+template<typename T, int S, axis_type axis>
 struct _wrms_1d_outbuf {
+    static constexpr int A = (axis == AXIS_FREQ) ? S : 1;
+
     const simd_t<T,S> zero = 0;
     const simd_t<T,S> one = 1;
 
     T *i_out;
     T *w_out;
     
-    const int nds_t;
+    // If axis=AXIS_TIME, then bufsize = nt_ds
+    // If axis=AXIS_FREQ, then bufsize = S * nfreq_ds.
+    const int bufsize;
     
     simd_t<T,S> wisum = 0;
     simd_t<T,S> wsum = 0;
@@ -37,31 +40,33 @@ struct _wrms_1d_outbuf {
     simd_t<T,S> var;
 
 
-    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds_t_) : 
+    _wrms_1d_outbuf(T *i_out_, T *w_out_, int nds) : 
 	i_out(i_out_), 
 	w_out(w_out_), 
-	nds_t(nds_t_)
+	bufsize(A*nds)
     { }
 
 
     // Callback for _wi_downsampler.
-    inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int it)
+    inline void put(simd_t<T,S> wival, simd_t<T,S> wval, int i)
     {
 	wisum += wival;
 	wsum += wval;
 	
 	// FIXME revisit after smask cleanup.
 	wival /= blendv(wval.compare_gt(zero), wval, one);
-	wival.storeu(i_out + it);
-	wval.storeu(w_out + it);	
+	wival.storeu(i_out + A*i);
+	wval.storeu(w_out + A*i);	
     }
 
 
     // Called after wi_downsampler, to finalize variance.
     inline void finalize(int niter, simd_t<T,S> sigma)
     {
-	wisum = wisum.horizontal_sum();
-	wsum = wsum.horizontal_sum();
+	if (axis == AXIS_TIME) {
+	    wisum = wisum.horizontal_sum();
+	    wsum = wsum.horizontal_sum();
+	}
 	
 	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
 	simd_t<T,S> wden = one / wsum_reg;
@@ -70,7 +75,7 @@ struct _wrms_1d_outbuf {
 	simd_t<T,S> wiisum = zero;
 
 	// Second pass to compute rms.
-	for (int it = 0; it < nds_t; it += S) {
+	for (int it = 0; it < bufsize; it += S) {
 	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
 	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
 	    
@@ -79,7 +84,10 @@ struct _wrms_1d_outbuf {
 	}
 
 	// FIXME need epsilons here?
-	var = wden * wiisum.horizontal_sum();
+	if (axis == AXIS_TIME)
+	    wiisum = wiisum.horizontal_sum();
+
+	var = wden * wiisum;
 
 	// Note (niter-1) iterations here (not niter iterations)
 	for (int iter = 1; iter < niter; iter++) {
@@ -89,7 +97,7 @@ struct _wrms_1d_outbuf {
 	    wisum = zero;
 	    wsum = zero;
 	
-	    for (int it = 0; it < nds_t; it += S) {
+	    for (int it = 0; it < bufsize; it += S) {
 		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + it);
 		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_out + it);
 		
@@ -105,9 +113,11 @@ struct _wrms_1d_outbuf {
 		wsum += wval;
 	    }
 	
-	    wiisum = wiisum.horizontal_sum();
-	    wisum = wisum.horizontal_sum();
-	    wsum = wsum.horizontal_sum();
+	    if (axis == AXIS_TIME) {
+		wiisum = wiisum.horizontal_sum();
+		wisum = wisum.horizontal_sum();
+		wsum = wsum.horizontal_sum();
+	    }
 
 	    // FIXME need epsilons here?
 	    wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
@@ -135,8 +145,8 @@ struct _wrms_1d_outbuf {
 // -------------------------------------------------------------------------------------------------
 
 
-// Note: Still assuming (axis, two_pass) = (AXIS_TIME, false).
-template<typename T, int S, int DfX, int DtX>
+// Note: Still assuming two_pass=false.
+template<typename T, int S, axis_type axis, int DfX, int DtX, typename std::enable_if<(axis==AXIS_TIME),int>::type = 0>
 inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     const int Df = wp->Df;
@@ -157,7 +167,7 @@ inline void kernel_wrms(const weighted_mean_rms *wp, const T *in_i, const T *in_
 	const T *in_i2 = in_i + ifreq * Df * stride;
 	const T *in_w2 = in_w + ifreq * Df * stride;
 
-	_wrms_1d_outbuf<T,S> out(out_i2, out_w2, nt_ds);
+	_wrms_1d_outbuf<T,S,AXIS_TIME> out(out_i2, out_w2, nt_ds);
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
 
 	out.finalize(niter, sigma);

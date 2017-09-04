@@ -14,7 +14,7 @@ namespace rf_kernels {
 template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, axis_type axis, int DfX, int DtX, typename std::enable_if<(axis==AXIS_TIME),int>::type = 0>
 inline void kernel_intensity_clipper(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
 {
     // For upsampler.  Note std::min() can't be used in a constexpr!
@@ -38,7 +38,7 @@ inline void kernel_intensity_clipper(const intensity_clipper *ic, const T *in_i,
 	const T *in_i2 = in_i + ifreq_ds * Df * stride;
 	T *in_w2 = in_w + ifreq_ds * Df * stride;
 
-	_wrms_1d_outbuf<T,S> out(tmp_i, tmp_w, nt_ds);
+	_wrms_1d_outbuf<T,S,AXIS_TIME> out(tmp_i, tmp_w, nt_ds);
 	ds1.downsample_1d(out, nt_ds, in_i2, in_w2, stride);
 
 	// Note iter_sigma here (not sigma)	

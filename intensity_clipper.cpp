@@ -63,7 +63,7 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper<float,8,Df,Dt>;
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper<float,8,AXIS_TIME,Df,Dt>;
 }
 
 

@@ -55,7 +55,7 @@ struct wrms_kernel_table {
     {
 	_populate1<Df,(Dt/2)> ();
 
-	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms<float,8,Df,Dt>;
+	kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_wrms<float,8,AXIS_TIME,Df,Dt>;
     }
 
     template<int Df, int Dt, typename enable_if<(Df==0),int>::type = 0>
@@ -113,6 +113,7 @@ weighted_mean_rms::weighted_mean_rms(int nfreq_, int nt_chunk_, axis_type axis_,
     this->nt_ds = xdiv(nt_chunk, Dt);
     this->nout = nfreq_ds;
 
+    // FIXME overallocated?
     this->out_mean = aligned_alloc<float> (nout);
     this->out_rms = aligned_alloc<float> (nout);
     this->tmp_i = aligned_alloc<float> (nfreq_ds * nt_ds);
