@@ -19,6 +19,91 @@ template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 
 
 // -------------------------------------------------------------------------------------------------
+//
+// _wrms_buf: there are different versions of this class corresponding to different memory layouts.
+//
+// They must define:
+//
+//    _wiisum(): returns sum W (I-mean)^2,  where caller passes mean
+//
+//    _itersum(): computes (sum W), (sum W (I-mean)), and (sum W (I-mean)^2),
+//                 where caller passes mean.
+//
+//    get_mask()
+
+
+template<typename T, int S>
+struct _wrms_buf_linear
+{
+    const T *i_buf;
+    const T *w_buf;
+    const int bufsize;
+
+    _wrms_buf_linear(const T *i_buf_, const T *w_buf_, int bufsize) : 
+	i_buf(i_buf_), 
+	w_buf(w_buf_), 
+	bufsize(bufsize)
+    { }
+
+    
+    inline simd_t<T,S> _wiisum(simd_t<T,S> mean) const
+    {
+	simd_t<T,S> wiisum = simd_t<T,S>::zero();
+	
+	for (int it = 0; it < bufsize; it += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + it);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + it);
+	    
+	    ival -= mean;
+	    wiisum += wval * ival * ival;
+	}
+
+	return wiisum;
+    }
+
+    
+    inline void _itersum(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum, simd_t<T,S> mean, simd_t<T,S> thresh) const
+    {
+	wsum = wisum = wiisum = simd_t<T,S>::zero();
+	
+	for (int it = 0; it < bufsize; it += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + it);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + it);
+	    
+	    // Use mean from previous iteration to (hopefully!) improve numerical stability.
+	    ival -= mean;
+	    
+	    // Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+	    simd_t<T,S> valid = (ival.abs() < thresh);
+	    wval &= valid;
+	    
+	    simd_t<T,S> wival = wval * ival;
+	    wiisum += wival * ival;
+	    wisum += wival;
+	    wsum += wval;
+	}
+    }
+    
+
+    // For intensity_clipper.
+    inline simd_t<T,S> get_mask(simd_t<T,S> mean, simd_t<T,S> thresh, int i) const
+    {
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + i);
+	ival -= mean;
+
+	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+	simd_t<T,S> valid = (ival.abs() < thresh);
+	return valid;
+    }
+
+};
+    
+
+// -------------------------------------------------------------------------------------------------
+//
+// _wrms_first_pass
+//
+// To be templated shortly with "TwoPass".
 
 
 template<bool Hflag, typename T, int S, typename std::enable_if<Hflag,int>::type = 0>
@@ -28,33 +113,11 @@ template<bool Hflag, typename T, int S, typename std::enable_if<(!Hflag),int>::t
 inline void _hsum(simd_t<T,S> &x) { }
 
 
-// Currently assume two_pass=true
 template<typename T, int S, bool Hflag>
-struct _wrms_buf_linear {
-    T *i_buf;
-    T *w_buf;
-    const int bufsize;
-    
-    simd_t<T,S> wisum = 0;
+struct _wrms_first_pass
+{
     simd_t<T,S> wsum = 0;
-    
-    simd_t<T,S> mean = 0;
-    simd_t<T,S> var = 0;
-
-
-    _wrms_buf_linear(T *i_buf_, T *w_buf_, int bufsize) : 
-	i_buf(i_buf_), 
-	w_buf(w_buf_), 
-	bufsize(bufsize)
-    { }
-
-
-    // Called before _wi_downsapler.
-    inline void initialize()
-    {
-	wsum = simd_t<T,S>::zero();
-	wisum = simd_t<T,S>::zero();
-    }
+    simd_t<T,S> wisum = 0;
     
     // Callback for _wi_downsampler.
     inline void ds_put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival)
@@ -63,9 +126,9 @@ struct _wrms_buf_linear {
 	wsum += wval;
     }
 
-
-    // Called after _wi_downsampler, to horizontally sum and finalize variance.
-    inline void finalize()
+    // Called after _wi_downsampler.
+    template<typename Tbuf>
+    inline void finalize(const Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var)
     {
 	const simd_t<T,S> zero = 0;
 	const simd_t<T,S> one = 1;
@@ -76,81 +139,49 @@ struct _wrms_buf_linear {
 	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
 	simd_t<T,S> wden = one / wsum_reg;
 	
+	// Second pass to compute variance.
 	mean = wden * wisum;
-	simd_t<T,S> wiisum = zero;
+	simd_t<T,S> wiisum = buf._wiisum(mean);
+	
+	// FIXME need epsilons here?
+	_hsum<Hflag> (wiisum);
+	var = wden * wiisum;	
+    }
+};
+    
 
-	// Second pass to compute rms.
-	for (int it = 0; it < bufsize; it += S) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + it);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + it);
-	    
-	    ival -= mean;
-	    wiisum += wval * ival * ival;
-	}
+// -------------------------------------------------------------------------------------------------
+//
+// _wrms_iterate
+//
+// Note: caller should call with (niter-1)!
 
+
+template<bool Hflag, typename Tbuf, typename T, int S>
+inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int niter, simd_t<T,S> sigma)
+{
+    const simd_t<T,S> zero = 0;
+    const simd_t<T,S> one = 1;
+
+    for (int iter = 0; iter < niter; iter++) {
+	simd_t<T,S> thresh = var.sqrt() * sigma;
+	
+	simd_t<T,S> wsum, wisum, wiisum;
+	buf._itersum(wsum, wisum, wiisum, mean, thresh);
+
+	_hsum<Hflag> (wsum);
+	_hsum<Hflag> (wisum);
 	_hsum<Hflag> (wiisum);
 	
 	// FIXME need epsilons here?
-	var = wden * wiisum;
-    }
-
-
-    // Note: should be called with (niter-1)
-    inline void iterate(int niter, simd_t<T,S> sigma)
-    {
-	const simd_t<T,S> zero = 0;
-	const simd_t<T,S> one = 1;
-
-	for (int iter = 0; iter < niter; iter++) {
-	    simd_t<T,S> thresh = var.sqrt() * sigma;
-	    simd_t<T,S> wiisum = zero;
-
-	    wisum = zero;
-	    wsum = zero;
-	
-	    for (int it = 0; it < bufsize; it += S) {
-		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + it);
-		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + it);
-		
-		// Use mean from previous iteration to (hopefully!) improve numerical stability.
-		ival -= mean;
-		
-		// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
-		simd_t<T,S> valid = (ival.abs() < thresh);
-		wval &= valid;
-		
-		simd_t<T,S> wival = wval * ival;
-		wiisum += wival * ival;
-		wisum += wival;
-		wsum += wval;
-	    }
-
-	    _hsum<Hflag> (wsum);
-	    _hsum<Hflag> (wisum);
-	    _hsum<Hflag> (wiisum);
-
-	    // FIXME need epsilons here?
-	    simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
-	    simd_t<T,S> wden = one / wsum_reg;
-	    simd_t<T,S> dmean = wden * wisum;
+	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+	simd_t<T,S> wden = one / wsum_reg;
+	simd_t<T,S> dmean = wden * wisum;
 	    
-	    mean += dmean;
-	    var = wden * wiisum - dmean*dmean;
-	}
+	mean += dmean;
+	var = wden * wiisum - dmean*dmean;
     }
-
-
-    // For intensity clipper!
-    inline simd_t<T,S> get_mask(simd_t<T,S> thresh, int i)
-    {
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + i);
-	ival -= mean;
-
-	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
-	simd_t<T,S> valid = (ival.abs() < thresh);
-	return valid;
-    }
-};
+}
 
 
 // -------------------------------------------------------------------------------------------------
@@ -161,6 +192,8 @@ struct _wrms_buf_linear {
 template<typename T, int S, int DfX, int DtX>
 inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
+    constexpr int Hflag = true;
+    
     const int Df = wp->Df;
     const int nfreq_ds = wp->nfreq_ds;
     const int nt_ds = wp->nt_ds;
@@ -172,22 +205,24 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
 
+    _wrms_buf_linear<T,S> buf(tmp_i, tmp_w, nt_ds);
     _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
-    _wrms_buf_linear<T,S,true> out(tmp_i, tmp_w, nt_ds);
 	
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
-	out.initialize();
+	_wrms_first_pass<T,S,Hflag> fp;
 	
-	ds1.downsample_1d(out, nt_ds, stride,
+	ds1.downsample_1d(fp, nt_ds, stride,
 			  in_i + ifreq * Df * stride,
 			  in_w + ifreq * Df * stride,
 			  tmp_i, tmp_w);
 
-	out.finalize();
-	out.iterate(niter-1, sigma);
+	simd_t<T,S> mean, var;
+	fp.finalize(buf, mean, var);
 
-	simd_t<T,S> rms = out.var.sqrt();
-	out_mean[ifreq] = out.mean.template extract<0> ();
+	_wrms_iterate<Hflag> (buf, mean, var, niter-1, sigma);
+
+	simd_t<T,S> rms = var.sqrt();
+	out_mean[ifreq] = mean.template extract<0> ();
 	out_rms[ifreq] = rms.template extract<0> ();
     }
 }
@@ -196,6 +231,8 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 template<typename T, int S, int DfX, int DtX>
 inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
+    constexpr int Hflag = false;
+    
     const int Df = wp->Df;
     const int Dt = wp->Dt;
     const int niter = wp->niter;
@@ -208,22 +245,24 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
     
+    _wrms_buf_linear<T,S> buf(tmp_i, tmp_w, nfreq_ds*S);
     _wi_downsampler_1f<T,S,DfX,DtX> ds1(Df, Dt);
-    _wrms_buf_linear<T,S,false> out(tmp_i, tmp_w, nfreq_ds*S);
 
     for (int it = 0; it < nt_ds; it += S) {
-	out.initialize();
+	_wrms_first_pass<T,S,Hflag> fp;
 	
-	ds1.downsample_1f(out, nfreq_ds, stride,
+	ds1.downsample_1f(fp, nfreq_ds, stride,
 			  in_i + it*Dt,
 			  in_w + it*Dt,
 			  tmp_i, tmp_w);
 
-	out.finalize();
-	out.iterate(niter-1, sigma);
+	simd_t<T,S> mean, var;
+	fp.finalize(buf, mean, var);
 
-	simd_helpers::simd_store(out_mean + it, out.mean);
-	simd_helpers::simd_store(out_rms + it, out.var.sqrt());
+	_wrms_iterate<Hflag> (buf, mean, var, niter-1, sigma);
+
+	simd_helpers::simd_store(out_mean + it, mean);
+	simd_helpers::simd_store(out_rms + it, var.sqrt());
     }	
 }
 
@@ -231,6 +270,8 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 template<typename T, int S, int DfX, int DtX>
 inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
+    constexpr int Hflag = true;
+    
     const int Df = wp->Df;
     const int nfreq_ds = wp->nfreq_ds;
     const int nt_ds = wp->nt_ds;
@@ -243,21 +284,24 @@ inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_rms = wp->out_rms;
 
     _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
-    _wrms_buf_linear<T,S,true> out(tmp_i, tmp_w, nfreq_ds * nt_ds);
+    _wrms_buf_linear<T,S> buf(tmp_i, tmp_w, nfreq_ds * nt_ds);
+    _wrms_first_pass<T,S,Hflag> fp;
     
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {	
-	ds1.downsample_1d(out, nt_ds, stride,
+	ds1.downsample_1d(fp, nt_ds, stride,
 			  in_i + ifreq * Df * stride,
 			  in_w + ifreq * Df * stride,
 			  tmp_i + ifreq * nt_ds,
 			  tmp_w + ifreq * nt_ds);
     }
-    
-    out.finalize();
-    out.iterate(niter-1, sigma);
 
-    simd_t<T,S> rms = out.var.sqrt();
-    out_mean[0] = out.mean.template extract<0> ();
+    simd_t<T,S> mean, var;
+    fp.finalize(buf, mean, var);
+
+    _wrms_iterate<Hflag> (buf, mean, var, niter-1, sigma);
+
+    simd_t<T,S> rms = var.sqrt();
+    out_mean[0] = mean.template extract<0> ();
     out_rms[0] = rms.template extract<0> ();
 }
 
