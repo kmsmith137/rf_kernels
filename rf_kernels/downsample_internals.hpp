@@ -21,22 +21,21 @@ template<typename T, int S, int D> using simd_downsampler = simd_helpers::simd_d
 
 // -------------------------------------------------------------------------------------------------
 //
-// _wi_downsample_0a<Df> (wi_acc, w_acc, intensity, weights, stride)
-// _wi_downsample_0a<Df> (wi_acc, w_acc, intensity, weights, stride, N)
+// _sum_strided<Df> (wi_acc, w_acc, intensity, weights, stride)
+// _sum_strided<Df> (wi_acc, w_acc, intensity, weights, stride, N)
 //
-// These sum over a shape-(Df,S) and shape-(Df,N) array respectively.
-// In the latter case, caller must check that N is divisible by the simd size S!
+// Sums over a shape-(Df,S) array.
 // No downsampling kernels are used -- the sum is purely "vertical".
 
 
 template<int Df, typename T, int S, typename std::enable_if<(Df==0),int>::type = 0>
-inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
+inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
 { }
 
 template<int Df, typename T, int S, typename std::enable_if<(Df>0),int>::type = 0>
-inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
+inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
 {
-    _wi_downsample_0a<Df-1> (wi_acc, w_acc, in_i, in_w, stride);
+    _sum_strided<Df-1> (wi_acc, w_acc, in_i, in_w, stride);
     
     simd_t<T,S> ival = simd_helpers::simd_load<T,S> (in_i + (Df-1)*stride);
     simd_t<T,S> wval = simd_helpers::simd_load<T,S> (in_w + (Df-1)*stride);
@@ -45,13 +44,7 @@ inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *
     w_acc += wval;
 }
 
-template<int Df, typename T, int S>
-inline void _wi_downsample_0a(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride, int N)
-{
-    for (int it = 0; it < N; it += S)
-	_wi_downsample_0a<Df> (wi_acc, w_acc, in_i + it, in_w + it, stride);
-}
-			      
+
 // ----------------------------------------------------------------------------------------------------
 //
 // _wi_downsampler_0d<T, S, Df0, DtX> ds0(Dt);
@@ -89,7 +82,7 @@ struct _wi_downsampler_0d<T, S, Df0, Dt, false>
 	
 	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
 	simd_t<T,S> w_acc = simd_t<T,S>::zero();
-	_wi_downsample_0a<Df0> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
+	_sum_strided<Df0> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
 	
 	wi_ds.template put<P-1> (wi_acc);
 	w_ds.template put<P-1> (w_acc);
@@ -134,7 +127,9 @@ struct _wi_downsampler_0d<T, S, Df0, DtX, true>
 	
 	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
 	simd_t<T,S> w_acc = simd_t<T,S>::zero();
-	_wi_downsample_0a<Df0> (wi_acc, w_acc, in_i + (P-1)*Dt, in_w + (P-1)*Dt, stride, Dt);
+	
+	for (int it = 0; it < Dt; it += S)
+	    _sum_strided<Df0> (wi_acc, w_acc, in_i+(P-1)*Dt+it, in_w+(P-1)*Dt+it, stride);
 	
 	wi_ds.template put<P-1> (wi_acc);
 	w_ds.template put<P-1> (w_acc);    

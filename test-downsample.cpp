@@ -92,8 +92,9 @@ static void test_wi_downsample(std::mt19937 &rng, int nfreq_out, int nt_out, int
 
 static void test_wi_downsample(std::mt19937 &rng)
 {
-    const int niter = 1000;
-
+    const int niter = 300;
+    cout << "test_wi_downsample: start" << endl;
+    
     for (int iter = 0; iter < niter; iter++) {
 	int Df = 1 << randint(rng, 0, 7);
 	int Dt = 1 << randint(rng, 0, 7);
