@@ -79,7 +79,7 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
 	ds1.downsample_1f(out, nfreq_ds, in_i + it*Dt, in_w + it*Dt, stride);
 
 	// Note iter_sigma here (not sigma)
-	out.finalize(niter, sigma);
+	out.finalize(niter, iter_sigma);
 	
 	// Note sigma here (not iter_sigma)
 	simd_t<T,S> thresh = sigma * out.var.sqrt();

@@ -104,7 +104,8 @@ struct _wrms_1d_outbuf {
 		// Use mean from previous iteration to (hopefully!) improve numerical stability.
 		ival -= mean;
 		
-		simd_t<T,S> valid = (ival.abs() <= thresh);
+		// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+		simd_t<T,S> valid = (ival.abs() < thresh);
 		wval &= valid;
 		
 		simd_t<T,S> wival = wval * ival;
@@ -136,7 +137,8 @@ struct _wrms_1d_outbuf {
 	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_out + A*i);
 	ival -= mean;
 
-	simd_t<T,S> valid = (ival.abs() <= thresh);
+	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+	simd_t<T,S> valid = (ival.abs() < thresh);
 	return valid;
     }
 };

@@ -251,10 +251,10 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 
     for (int iouter = 0; iouter < 300; iouter++) {
 	axis_type axis = randint(rng,0,2) ? AXIS_FREQ : AXIS_TIME;  // FIXME
-	int Df = 1 << randint(rng, 0, 7);
-	int Dt = 1 << randint(rng, 0, 7);
+	int Df = 1 << randint(rng, 0, 6);
+	int Dt = 1 << randint(rng, 0, 6);
 	int niter = randint(rng, niter_min, niter_max+1);
-	int nfreq = Df * randint(rng, 1, 17);
+	int nfreq = 8 * Df * randint(rng, 1, 17);  // FIXME
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.5, 1.7);
@@ -271,10 +271,10 @@ static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_m
 
     for (int iouter = 0; iouter < 300; iouter++) {
 	axis_type axis = randint(rng,0,2) ? AXIS_FREQ : AXIS_TIME;  // FIXME
-	int Df = 1 << randint(rng, 0, 7);
-	int Dt = 1 << randint(rng, 0, 7);
+	int Df = 1 << randint(rng, 0, 6);
+	int Dt = 1 << randint(rng, 0, 6);
 	int niter = randint(rng, niter_min, niter_max+1);
-	int nfreq = Df * randint(rng, 1, 17);
+	int nfreq = 8 * Df * randint(rng, 1, 17); // FIXME
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.0, 1.5);
