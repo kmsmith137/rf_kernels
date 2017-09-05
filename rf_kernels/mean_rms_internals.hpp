@@ -460,7 +460,7 @@ struct _wrms_first_pass<T,S,Hflag,false>
 	// Threshold variance at (eps_3 mean^2).
 	constexpr T eps_3 = 1.0e2 * simd_helpers::machine_epsilon<T> ();
 	simd_t<T,S> cutoff = simd_t<T,S>(eps_3) * mean * mean;
-	simd_t<T,S> valid = (var >= cutoff*cutoff);   // decided to use ">=" here (not ">")
+	simd_t<T,S> valid = (var >= cutoff);   // decided to use ">=" here (not ">")
 	var &= valid;
     }
 
@@ -514,7 +514,7 @@ inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int ni
 	// Threshold variance at (eps_3 dmean^2).
 	constexpr T eps_3 = 1.0e2 * simd_helpers::machine_epsilon<T> ();
 	cutoff = simd_t<T,S>(eps_3) * dmean * dmean;
-	valid = (var >= cutoff*cutoff);   // decided to use ">=" here (not ">")
+	valid = (var >= cutoff);   // decided to use ">=" here (not ">")
 	var &= valid;
 
 	// Update mean.
