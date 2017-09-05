@@ -166,7 +166,7 @@ test-polynomial-detrender.o: test-polynomial-detrender.cpp $(TEST_DEPS) rf_kerne
 test-spline-detrender.o: test-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
-test-std-dev-clipper.o: test-std-dev-clipper.cpp $(TEST_DEPS) rf_kernels/std_dev_clipper.hpp
+test-std-dev-clipper.o: test-std-dev-clipper.cpp $(TEST_DEPS) rf_kernels/mean_rms.hpp rf_kernels/std_dev_clipper.hpp
 	$(CPP) -c -o $@ $<
 
 test-upsample.o: test-upsample.cpp $(TEST_DEPS) rf_kernels/upsample.hpp
@@ -188,7 +188,7 @@ test-polynomial-detrender: test-polynomial-detrender.o polynomial_detrender.o mi
 test-spline-detrender: test-spline-detrender.o spline_detrender.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
-test-std-dev-clipper: test-std-dev-clipper.o std_dev_clipper.o misc.o
+test-std-dev-clipper: test-std-dev-clipper.o std_dev_clipper.o misc.o mean_rms.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-upsample: test-upsample.o upsample.o

@@ -165,14 +165,18 @@ void std_dev_clipper::clip(const float *intensity, float *weights, int stride)
 }
 
 
-// Scalar helper called by kernel
+// Scalar helper called by kernel.
+//
+// Note that std_dev_clipper::_clip_1d() isn't unit-tested anywhere (in particular,
+// test-std-dev-clippers is a circular test of _clip_1d()).  This is because I decided
+// it was so simple that a reference implementation would just be equivalent.  If you
+// modify it, be careful!
+
 void std_dev_clipper::_clip_1d()
 {
-    int n = (axis == AXIS_TIME) ? nfreq_ds : nt_ds;
-
 #if 0
     cout << "clip_1d top: [";
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < ntmp_v; i++)
 	cout << " " << tmp_v[i];
     cout << " ]\n";
 #endif
@@ -180,7 +184,7 @@ void std_dev_clipper::_clip_1d()
     float acc0 = 0.0;
     float acc1 = 0.0;
     
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < ntmp_v; i++) {
 	if (tmp_v[i] > 0.0) {
 	    acc0 += 1.0;
 	    acc1 += tmp_v[i];
@@ -188,28 +192,28 @@ void std_dev_clipper::_clip_1d()
     }
     
     if (acc0 < 1.5) {
-	memset(tmp_v, 0, n * sizeof(float));
+	memset(tmp_v, 0, ntmp_v * sizeof(float));
 	return;
     }
     
     float mean = acc1 / acc0;
     float acc2 = 0.0;
     
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < ntmp_v; i++)
 	if (tmp_v[i] > 0.0)
 	    acc2 += square(tmp_v[i] - mean);
     
     float stdv = sqrtf(acc2/acc0);
     float thresh = sigma * stdv;
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < ntmp_v; i++) {
 	if (fabs(tmp_v[i] - mean) >= thresh)
 	    tmp_v[i] = 0;
     }
 
 #if 0
     cout << "clip_1d bottom: [";
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < ntmp_v; i++)
 	cout << " " << tmp_v[i];
     cout << " ]\n";
 #endif
