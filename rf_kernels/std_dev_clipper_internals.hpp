@@ -22,7 +22,7 @@ template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 extern void clip_1d(int n, float *tmp_sd, int *tmp_valid, double sigma);
 
 
-template<typename T, int S, int DfX, int DtX, bool TwoPass>
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
 inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
 {
     constexpr bool Hflag = true;
@@ -117,6 +117,40 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
 	    simd_t<T,S> mask = (v > simd_t<T,S>::zero());
 	    us0.put_mask(in_w + ifreq_us*stride + it_ds*Dt, stride, mask);
 	}
+    }
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
+inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
+{
+    constexpr bool Hflag = true;
+    
+    const int nfreq = sd->nfreq;
+    const int nt_chunk = sd->nt_chunk;
+    
+    float *tmp_v = sd->tmp_v;
+    
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	_wrms_buf_linear<T,S> buf(in_i + ifreq*stride, in_w + ifreq*stride, nt_chunk);
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
+	
+	simd_t<T,S> mean, var;
+	fp.run(buf, mean, var);
+
+	tmp_v[ifreq] = var.template extract<0> ();
+    }
+
+    sd->_clip_1d();
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	if (tmp_v[ifreq] > 0.0)
+	    continue;
+
+	memset(in_w + ifreq*stride, 0, nt_chunk * sizeof(T));
     }
 }
 

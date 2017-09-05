@@ -24,12 +24,16 @@ template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 //
 // They must define:
 //
-//    _wiisum(): returns sum W (I-mean)^2,  where caller passes mean
+//    _first_pass(): computes (sum W) and (sum W I)
 //
-//    _itersum(): computes (sum W), (sum W (I-mean)), and (sum W (I-mean)^2),
+//    _second_pass(): returns sum W (I-mean)^2,  where caller passes mean
+//
+//    _single_pass(): computes (sum W), (sum W I), and (sum W I^2)
+//
+//    _iterate(): computes (sum W), (sum W (I-mean)), and (sum W (I-mean)^2),
 //                 where caller passes mean.
 //
-//    get_mask()
+//    get_mask(): for intensity_clipper
 
 
 template<typename T, int S>
@@ -45,8 +49,22 @@ struct _wrms_buf_linear
 	bufsize(bufsize)
     { }
 
+
+    inline void _first_pass(simd_t<T,S> &wsum, simd_t<T,S> &wisum) const
+    {
+	wsum = wisum = simd_t<T,S>::zero();
+	
+	for (int it = 0; it < bufsize; it += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + it);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + it);
+
+	    wisum += wval * ival;
+	    wsum += wval;
+	}
+    }
+
     
-    inline simd_t<T,S> _wiisum(simd_t<T,S> mean) const
+    inline simd_t<T,S> _second_pass(simd_t<T,S> mean) const
     {
 	simd_t<T,S> wiisum = simd_t<T,S>::zero();
 	
@@ -61,8 +79,24 @@ struct _wrms_buf_linear
 	return wiisum;
     }
 
+
+    inline void _single_pass(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum) const
+    {
+	wsum = wisum = wiisum = simd_t<T,S>::zero();
+	
+	for (int it = 0; it < bufsize; it += S) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + it);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + it);
+	    
+	    simd_t<T,S> wival = wval * ival;
+	    wiisum += wival * ival;
+	    wisum += wival;
+	    wsum += wval;
+	}
+    }
+
     
-    inline void _itersum(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum, simd_t<T,S> mean, simd_t<T,S> thresh) const
+    inline void _iterate(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum, simd_t<T,S> mean, simd_t<T,S> thresh) const
     {
 	wsum = wisum = wiisum = simd_t<T,S>::zero();
 	
@@ -102,6 +136,11 @@ struct _wrms_buf_linear
 // -------------------------------------------------------------------------------------------------
 //
 // _wrms_first_pass
+//
+// Defines
+//
+//   finalize(buf, mean, var) -> call after downsampler
+//   run(buf, mean, var) -> to run from scratch
 
 
 template<bool Hflag, typename T, int S, typename std::enable_if<Hflag,int>::type = 0>
@@ -144,11 +183,19 @@ struct _wrms_first_pass<T,S,Hflag,true>
 	
 	// Second pass to compute variance.
 	mean = wden * wisum;
-	simd_t<T,S> wiisum = buf._wiisum(mean);
+	simd_t<T,S> wiisum = buf._second_pass(mean);
 	
 	// FIXME need epsilons here?
 	_hsum<Hflag> (wiisum);
 	var = wden * wiisum;	
+    }
+
+    // Run from scratch.
+    template<typename Tbuf>
+    inline void run(const Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var)
+    {
+	buf._first_pass(wsum, wisum);
+	this->finalize(buf, mean, var);
     }
 };
 
@@ -187,6 +234,14 @@ struct _wrms_first_pass<T,S,Hflag,false>
 	mean = wden * wisum;
 	var = wden * wiisum - mean * mean;
     }
+
+    // Run from scratch.
+    template<typename Tbuf>
+    inline void run(const Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var)
+    {
+	buf._single_pass(wsum, wisum, wiisum);
+	this->finalize(buf, mean, var);
+    }
 };
     
 
@@ -207,7 +262,7 @@ inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int ni
 	simd_t<T,S> thresh = var.sqrt() * sigma;
 	
 	simd_t<T,S> wsum, wisum, wiisum;
-	buf._itersum(wsum, wisum, wiisum, mean, thresh);
+	buf._iterate(wsum, wisum, wiisum, mean, thresh);
 
 	_hsum<Hflag> (wsum);
 	_hsum<Hflag> (wisum);
