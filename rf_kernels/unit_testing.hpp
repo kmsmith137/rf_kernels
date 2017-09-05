@@ -70,6 +70,21 @@ inline axis_type random_axis_type(std::mt19937 &rng)
 	return AXIS_NONE;
 }
 
+template<typename T>
+inline void randomly_permute(std::mt19937 &rng, T *v, int n)
+{
+    for (int i = 1; i < n; i++) {
+	int j = randint(rng, 0, i+1);
+	std::swap(v[i], v[j]);
+    }
+}
+
+template<typename T> 
+inline void randomly_permute(std::mt19937 &rng, std::vector<T> &v)
+{
+    randomly_permute(&v[0], v.size());
+}
+
 
 // -------------------------------------------------------------------------------------------------
 //

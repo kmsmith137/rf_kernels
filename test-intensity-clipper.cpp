@@ -135,6 +135,57 @@ static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in
 // -------------------------------------------------------------------------------------------------
 
 
+static void _simulate_data(std::mt19937 &rng, float *intensity, float *weights, int n, bool permute)
+{
+    // float pnonzero = (uniform_rand(rng) < 0.1) ? (2.0/n) : 1.0;
+    float pnonzero = 1.0;
+
+    for (int i = 0; i < n; i++) {
+	intensity[i] = uniform_rand(rng, -1.0, 1.0);
+	weights[i] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
+    }
+}
+
+
+static void simulate_data(std::mt19937 &rng, int nfreq, int nt, float *intensity, float *weights, int stride, axis_type axis)
+{
+    if (axis == AXIS_FREQ) {
+	vector<float> i_tmp(nfreq, 0.0);
+	vector<float> w_tmp(nfreq, 0.0);
+
+	for (int it = 0; it < nt; it++) {
+	    _simulate_data(rng, &i_tmp[0], &w_tmp[0], nfreq, true);
+
+	    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+		intensity[ifreq*stride+it] = i_tmp[ifreq];
+		weights[ifreq*stride+it] = w_tmp[ifreq];
+	    }
+	}
+    }
+    else if (axis == AXIS_TIME) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	    _simulate_data(rng, intensity + ifreq*stride, weights + ifreq*stride, nt, true);
+    }
+    else if (axis == AXIS_NONE) {
+	vector<float> i_tmp(nfreq * nt, 0.0);
+	vector<float> w_tmp(nfreq * nt, 0.0);
+	_simulate_data(rng, &i_tmp[0], &w_tmp[0], nfreq*nt, true);
+	
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt; it++) {
+		intensity[ifreq*stride+it] = i_tmp[ifreq*nt+it];
+		weights[ifreq*stride+it] = w_tmp[ifreq*nt+it];
+	    }
+	}
+    }
+    else
+	throw runtime_error("bad axis in simulate()");
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
 static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, bool two_pass)
 {
 #if 0
@@ -149,9 +200,9 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     if (axis == AXIS_FREQ) nout = nt_ds;
     if (axis == AXIS_TIME) nout = nfreq_ds;
 
-    // FIXME improve random generation of test data so that corner cases are exposed.
-    vector<float> i_in = uniform_randvec(rng, nfreq*stride, -1.0, 1.0);
-    vector<float> w_in = uniform_randvec(rng, nfreq*stride, 0.1, 1.0);
+    vector<float> i_in(nfreq*stride, 0.0);
+    vector<float> w_in(nfreq*stride, 0.0);
+    simulate_data(rng, nfreq, nt_chunk, &i_in[0], &w_in[0], stride, axis);
 
     rf_kernels::weighted_mean_rms wrms(nfreq, nt_chunk, axis, Df, Dt, niter, sigma, two_pass);    
     rf_assert(wrms.nfreq_ds == nfreq_ds);
@@ -235,9 +286,9 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt_chunk, Dt);
     
-    // FIXME improve random generation of test data so that corner cases are exposed.
-    vector<float> i_in = uniform_randvec(rng, nfreq*stride, -1.0, 1.0);
-    vector<float> w_in = uniform_randvec(rng, nfreq*stride, 0.1, 1.0);
+    vector<float> i_in(nfreq*stride, 0.0);
+    vector<float> w_in(nfreq*stride, 0.0);
+    simulate_data(rng, nfreq, nt_chunk, &i_in[0], &w_in[0], stride, axis);
 
     rf_kernels::intensity_clipper ic(nfreq, nt_chunk, axis, sigma, Df, Dt, niter, iter_sigma, two_pass);
     rf_assert(ic.nfreq_ds == nfreq_ds);
