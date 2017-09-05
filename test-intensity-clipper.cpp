@@ -106,8 +106,8 @@ static void _ref_iclip(int nfreq, int nt, const float *i_in, float *w_in, int st
 {
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
-	    // Note: ">" here (not ">="), so that we always mask if thresh=0.
-	    if (abs(i_in[ifreq*stride+it] - mean) > thresh)
+	    // Note: ">=" here (not ">"), so that we always mask if thresh=0.
+	    if (abs(i_in[ifreq*stride+it] - mean) >= thresh)
 		w_in[ifreq*stride+it] = 0.0;
 	}
     }
@@ -137,8 +137,7 @@ static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in
 
 static void _simulate_data(std::mt19937 &rng, float *intensity, float *weights, int n, bool permute)
 {
-    // float pnonzero = (uniform_rand(rng) < 0.1) ? (2.0/n) : 1.0;
-    float pnonzero = 1.0;
+    float pnonzero = (uniform_rand(rng) < 0.1) ? (1.5/n) : 1.0;
 
     for (int i = 0; i < n; i++) {
 	intensity[i] = uniform_rand(rng, -1.0, 1.0);
@@ -188,11 +187,7 @@ static void simulate_data(std::mt19937 &rng, int nfreq, int nt, float *intensity
 
 static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, bool two_pass)
 {
-#if 0
-    cout << "test_wrms(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride << ",axis=" << axis
-	 << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma << ",two_pass=" << two_pass << endl;
-#endif
-
+    int verbosity = 0;  // increase for debugging
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt_chunk, Dt);
     
@@ -251,23 +246,43 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 	reference_wrms_iterate(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 0.5);
     }
 
-#if 0
-    for (int i = 0; i < nout; i++) {
-	cout << "    " << i 
-	     << " | " << wrms.out_mean[i] << " " << refc_mean[i] << " " << refp_mean[i]
-	     << " | " << wrms.out_rms[i] << " " << refc_rms[i] << " " << refp_rms[i]
-	     << endl;
-    }
-#endif
-
     // Step 3: compare outputs!    
+    
+    int icmp = 0;
 
-    for (int i = 0; i < nout; i++) {
-	float eps = 1.0e-4 * abs(refp_mean[i]) + 1.0e-4 * refp_rms[i];
-	rf_assert(abs(wrms.out_mean[i] - refc_mean[i]) <= eps);
-	rf_assert(abs(wrms.out_mean[i] - refp_mean[i]) <= eps);
-	rf_assert(refc_rms[i] <= wrms.out_rms[i] + eps);
-	rf_assert(wrms.out_rms[i] <= refp_rms[i] + eps);
+    try {
+	while (icmp < nout) {
+	    float eps = 1.0e-4 * abs(wrms.out_mean[icmp]) + 1.0e-4 * wrms.out_rms[icmp];
+
+	    if (wrms.out_rms[icmp] > 0) {
+		rf_assert(refp_rms[icmp] > 0);
+		rf_assert(abs(wrms.out_rms[icmp] - refp_rms[icmp]) <= eps);
+		rf_assert(abs(wrms.out_mean[icmp] - refp_mean[icmp]) <= eps);
+	    }
+	    else
+		rf_assert(refc_rms[icmp] == 0);
+
+	    icmp++;
+	}
+    } catch (exception &e) {
+	cout << e.what() << endl;
+	// fall through...
+    }
+
+    bool failed = (icmp < nout);
+
+    if (failed || (verbosity >= 1)) {
+	cout << "test_wrms(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride << ",axis=" << axis
+	     << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma << ",two_pass=" << two_pass << ")\n";
+    }
+
+    if (failed) {
+	cout << "    failed at i=" << icmp << endl
+	     << "    fast: mean=" << wrms.out_mean[icmp] << ", rms=" << wrms.out_rms[icmp] << endl
+	     << "    refc: mean=" << refc_mean[icmp] << ", rms=" << refc_rms[icmp] << endl
+	     << "    refp: mean=" << refp_mean[icmp] << ", rms=" << refp_rms[icmp] << endl;
+
+	exit(1);
     }
 }
 
@@ -277,12 +292,7 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 
 static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, double iter_sigma, bool two_pass)
 {
-#if 0
-    cout << "test_intensity_clipper(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride 
-	 << ",axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma 
-	 << ",iter_sigma=" << iter_sigma << ",two_pass=" << two_pass << ")" << endl;
-#endif
-
+    int verbosity = 0;  // increase for debugging
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt_chunk, Dt);
     
@@ -329,30 +339,50 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     us.upsample(nfreq_ds, nt_ds, &w_ref1[0], stride, &w_ds1[0], nt_ds);
     us.upsample(nfreq_ds, nt_ds, &w_ref2[0], stride, &w_ds2[0], nt_ds);
 
-#if 0
-    int nmr = 1;
-    if (axis == AXIS_FREQ) nmr = nt_ds;
-    if (axis == AXIS_TIME) nmr = nfreq_ds;
+    // Step 5: Compare!
 
-    for (int i = 0; i < nmr; i++)
-	cout << "mean[" << i << "]=" << wrms.out_mean[i] << ", rms[" << i << "]=" << wrms.out_rms[i] << endl;
+    int ifreq_c = 0;
+    int it_c = 0;
 
-    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	for (int it = 0; it < nt_chunk; it++) {
-	    int i = ifreq * stride + it;
-	    cout << "    (ifreq,it) = (" << ifreq << "," << it << "): i_in= " << i_in[i]
-		 << ", w_fast=" << w_fast[i] << ", w_ref1=" << w_ref1[i] << ", w_ref2=" << w_ref2[i] << endl;
+    try {
+	while (ifreq_c < nfreq) {
+	    while (it_c < nt_chunk) {
+		int i = ifreq_c * stride + it_c;
+		rf_assert(w_fast[i] >= w_ref1[i]);
+		rf_assert(w_fast[i] <= w_ref2[i]);
+		it_c++;
+	    }
+	    ifreq_c++;
 	}
     }
-#endif
+    catch (exception &e) {
+	cout << e.what() << endl;
+	// fall through...
+    }
 
-    // Compare!
-    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	for (int it = 0; it < nt_chunk; it++) {
-	    int i = ifreq * stride + it;
-	    rf_assert(w_fast[i] >= w_ref1[i]);
-	    rf_assert(w_fast[i] <= w_ref2[i]);
-	}
+    bool failed = (ifreq_c < nfreq) || (it_c < nt_chunk);
+
+    if (failed || (verbosity >= 1)) {
+	cout << "test_intensity_clipper(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride 
+	     << ",axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma 
+	     << ",iter_sigma=" << iter_sigma << ",two_pass=" << two_pass << ")" << endl;
+    }
+
+    if (failed) {
+	cout << "    failed at ifreq=" << ifreq_c << ", it=" << it_c << endl;
+
+	if (axis == AXIS_FREQ)
+	    cout << "    at it=" << it_c << ", mean=" << wrms.out_mean[it_c] << ", rms=" << wrms.out_rms[it_c] << endl;
+	if (axis == AXIS_TIME)	
+	    cout << "    at ifreq=" << ifreq_c << ", mean=" << wrms.out_mean[ifreq_c] << ", rms=" << wrms.out_rms[ifreq_c] << endl;
+	if (axis == AXIS_NONE)
+	    cout << "    global mean=" << wrms.out_mean[0] << ", rms=" << wrms.out_rms[0] << endl;
+
+	int i = ifreq_c * stride + it_c;
+	cout << "    at (ifreq,it) = (" << ifreq_c << "," << it_c << "): i_in= " << i_in[i]
+	     << ", w_fast=" << w_fast[i] << ", w_ref1=" << w_ref1[i] << ", w_ref2=" << w_ref2[i] << endl;
+
+	exit(1);
     }
 }
 
