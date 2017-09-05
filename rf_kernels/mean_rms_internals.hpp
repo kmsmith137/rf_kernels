@@ -422,7 +422,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 }
 
 
-template<typename T, int S, int DfX, int DtX, bool TwoPass>
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
 inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     constexpr int Hflag = false;
@@ -529,6 +529,33 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 	out_mean[ifreq] = mean.template extract<0> ();
 	out_rms[ifreq] = rms.template extract<0> ();
     }
+}
+
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
+inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+{
+    constexpr int Hflag = false;
+    
+    const int niter = wp->niter;
+    const int nt = wp->nt_chunk;
+    const int nfreq = wp->nfreq;
+    const simd_t<T,S> sigma = wp->sigma;
+
+    float *out_mean = wp->out_mean;
+    float *out_rms = wp->out_rms;
+    
+    for (int it = 0; it < nt; it += S) {
+	_wrms_buf_scattered<T,S> buf(in_i + it, in_w + it, nfreq, stride);
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
+
+	simd_t<T,S> mean, var;
+	fp.run(buf, mean, var);
+
+	_wrms_iterate<Hflag> (buf, mean, var, niter-1, sigma);
+
+	simd_helpers::simd_store(out_mean + it, mean);
+	simd_helpers::simd_store(out_rms + it, var.sqrt());
+    }	
 }
 
 
