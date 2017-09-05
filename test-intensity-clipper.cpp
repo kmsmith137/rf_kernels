@@ -176,8 +176,25 @@ static void _simulate_evil_data(std::mt19937 &rng, float *intensity, float *weig
 
     // Decide what we want the (mean,rms) to be.
 
-    mean = uniform_rand(rng, -1.0, 1.0);
-    rms = uniform_rand(rng);
+    if (uniform_rand(rng) < 0.1)
+	mean = 0.0;
+    else
+	mean = uniform_rand(rng, -1.0, 1.0);
+
+    if (uniform_rand(rng) < 0.1)
+	rms = 0.0;
+    else if (uniform_rand(rng) < 0.2) {
+	// Cause trouble for intensity_clipper(two_pass=true)
+	float rms_cutoff = 1.0e2 * simd_helpers::machine_epsilon<float>() * abs(mean);
+	rms = uniform_rand(rng, 1.0-1.0e-5, 1.0+1.0e-5) * rms_cutoff;
+    }
+    else if (uniform_rand(rng) < 0.2) {
+	// Cause trouble for intensity_clipper(two_pass=false)
+	float var_cutoff = 1.0e3 * simd_helpers::machine_epsilon<float>() * mean * mean;
+	rms = uniform_rand(rng, 1.0-1.0e-5, 1.0+1.0e-5) * sqrt(var_cutoff);
+    }
+    else
+	rms = uniform_rand(rng);
 
     // Assign specified (mean,rms) to the simulated data.
 
@@ -380,18 +397,20 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
 
     // The rest of this routine is devoted to computing something to compare to!
 
-    // Temporary buffers.
+    // Step 1: compute wrms.
+    // Reminder: the outputs are stored in wrms.out_mean[] and wrms.out_rms[].
+    // Note 'iter_sigma' here (not sigma).
+
+    rf_kernels::weighted_mean_rms wrms(nfreq, nt_chunk, axis, Df, Dt, niter, iter_sigma, two_pass);
+    wrms.compute_wrms(&i_in[0], &w_in[0], stride);
+
+    // Step 2: downsample.
+
     vector<float> i_ds(nfreq_ds * nt_ds, 0.0);
     vector<float> w_ds(nfreq_ds * nt_ds, 0.0);
 
-    // Step 1: downsample.
     rf_kernels::wi_downsampler ds(Df, Dt);
     ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
-
-    // Step 2: compute wrms.
-    // Reminder: the outputs are stored in wrms.out_mean[] and wrms.out_rms[].
-    rf_kernels::weighted_mean_rms wrms(nfreq_ds, nt_ds, axis, 1, 1, niter, iter_sigma, two_pass);
-    wrms.compute_wrms(&i_ds[0], &w_ds[0], nt_ds);
 
     // Step 3: run reference intensity clipper.
     // We do this twice, with slightly different thresholds, for numerical stability.
