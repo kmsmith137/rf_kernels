@@ -66,7 +66,7 @@ inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T 
 }
 
 
-template<typename T, int S, int DfX, int DtX, bool TwoPass>
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
 inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
 {
     constexpr bool Hflag = false;
@@ -198,6 +198,41 @@ inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T 
 	    simd_t<T,S> mask = buf.get_mask(mean, thresh, it);
 
 	    T *p = in_w + ifreq*stride + it;
+	    simd_t<T,S> w = simd_helpers::simd_load<T,S> (p);
+	    simd_helpers::simd_store(p, w & mask);
+	}
+    }
+}
+
+
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
+inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
+{
+    constexpr bool Hflag = false;
+
+    const int nfreq = ic->nfreq;
+    const int nt = ic->nt_chunk;
+    const int niter = ic->niter;
+    const simd_t<T,S> sigma(ic->sigma);
+    const simd_t<T,S> iter_sigma(ic->iter_sigma);
+    
+    for (int it = 0; it < nt; it += S) {
+	_wrms_buf_scattered<T,S> buf(in_i + it, in_w + it, nfreq, stride);
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
+
+	simd_t<T,S> mean, var;
+	fp.run(buf, mean, var);
+
+	// Note iter_sigma here (not sigma)
+	_wrms_iterate<Hflag> (buf, mean, var, niter-1, iter_sigma);
+	
+	// Note sigma here (not iter_sigma)
+	simd_t<T,S> thresh = sigma * var.sqrt();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<T,S> mask = buf.get_mask(mean, thresh, ifreq);
+
+	    float *p = in_w + ifreq*stride + it;
 	    simd_t<T,S> w = simd_helpers::simd_load<T,S> (p);
 	    simd_helpers::simd_store(p, w & mask);
 	}
