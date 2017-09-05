@@ -1,3 +1,5 @@
+#include <simd_helpers/core.hpp>  // machine_epsilon()
+
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
 #include "rf_kernels/unit_testing.hpp"
@@ -14,50 +16,87 @@ using namespace rf_kernels;
 // -------------------------------------------------------------------------------------------------
 
 
-// Reference weighted_mean_and_rms take 1: assumes (axis,Df,Dt,niter)=(None,1,1,1).
-static void _ref_wrms(float *out_mean, float *out_rms, int nfreq, int nt, const float *i_in, const float *w_in, int stride)
+// _ref_wrms_iterate(): 
+//   - assumes (axis,Df,Dt) = (AXIS_NONE,1,1).
+//   - assumes inout_mean has already been initialized.
+//   - updates inout_mean, and fills out_rms.
+//   - if the "epsilon" check fails, out_rms will be set to zero, but inout_mean will still be updated.
+
+static void _ref_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int nt, const float *i_in, const float *w_in, int stride, float eps_multiplier)
 {
     float wsum = 0.0;
     float wisum = 0.0;
     float wiisum = 0.0;
+    float in_mean = *inout_mean;
 
-    // First pass
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
-	    wsum += w_in[ifreq*stride + it];
-	    wisum += w_in[ifreq*stride + it] * i_in[ifreq*stride + it];
+	    float wval = w_in[ifreq*stride + it];
+	    float dival = i_in[ifreq*stride + it] - in_mean;
+
+	    wsum += wval;
+	    wisum += wval * dival;
+	    wiisum += wval * dival * dival;
 	}
     }
 
-    float mean = (wsum > 0) ? (wisum / wsum) : 0.0;
+    float dmean = (wsum > 0) ? (wisum/wsum) : 0;
+    float var = (wsum > 0) ? (wiisum/wsum - dmean*dmean) : 0;
 
-    // Second pass (note that there is no need to recompute wsum)
-    for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	for (int it = 0; it < nt; it++)
-	    wiisum += w_in[ifreq*stride + it] * square(i_in[ifreq*stride + it] - mean);
+    float eps_2 = 1.0e2 * eps_multiplier * simd_helpers::machine_epsilon<float> ();
+    float eps_3 = 1.0e3 * eps_multiplier * simd_helpers::machine_epsilon<float> ();
 
-    *out_mean = mean;
-    *out_rms = (wsum > 0) ? sqrt(wiisum/wsum) : 0.0;
+    // Threshold variance at (eps_2 in_mean)^2.
+    // Note: use ">=" here (not ">") following rf_kernels/mean_rms_internals.hpp
+    if (var >= square(eps_2 * in_mean))
+	var = 0.0;
+
+    // Threshold variance at (eps_3 dmean^2).
+    if (var >= eps_3 * square(dmean))
+	var = 0.0;
+
+    *inout_mean = in_mean + dmean;
+    *out_rms = sqrt(var);
 }
 
 
-// Reference weighted_mean_and_rms take 2: (Df,Dt,niter)=(1,1,1) assumed, but arbitrary axis allowed.
-static void reference_wrms(float *out_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, const float *w_in, int stride)
+// reference_wrms_iterate(): allows an arbitrary axis (otherwise identical to _ref_wrms_iterate).
+//   - assumes (Df,Dt) = (1,1).
+//   - assumes inout_mean has already been initialized.
+//   - updates inout_mean, and fills out_rms.
+//   - if the "epsilon" check fails, out_rms will be set to zero, but inout_mean will still be updated.
+
+static void reference_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, const float *w_in, int stride, float eps_multiplier)
 {
     if (axis == AXIS_FREQ) {
 	for (int it = 0; it < nt; it++)
-	    _ref_wrms(out_mean + it, out_rms + it, nfreq, 1, i_in + it, w_in + it, stride);
+	    _ref_wrms_iterate(inout_mean + it, out_rms + it, nfreq, 1, i_in + it, w_in + it, stride, eps_multiplier);
     }
     else if (axis == AXIS_TIME) {
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	    _ref_wrms(out_mean + ifreq, out_rms + ifreq, 1, nt, i_in + ifreq*stride, w_in + ifreq*stride, 0);
+	    _ref_wrms_iterate(inout_mean + ifreq, out_rms + ifreq, 1, nt, i_in + ifreq*stride, w_in + ifreq*stride, 0, eps_multiplier);
     }
     else if (axis == AXIS_NONE)
-	_ref_wrms(out_mean, out_rms, nfreq, nt, i_in, w_in, stride);
+	_ref_wrms_iterate(inout_mean, out_rms, nfreq, nt, i_in, w_in, stride, eps_multiplier);
     else
 	throw runtime_error("bad axis in reference_wrms()");
 }
 
+
+// reference_wrms_compute(): computes wrms from scratch, i.e. does not assume that 'out_mean' has been initialized.
+static void reference_wrms_compute(float *out_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, const float *w_in, int stride, bool two_pass, float eps_multiplier)
+{
+    int nout = 1;
+    if (axis == AXIS_FREQ) nout = nt;
+    if (axis == AXIS_TIME) nout = nfreq;
+
+    memset(out_mean, 0, nout * sizeof(*out_mean));
+    
+    reference_wrms_iterate(out_mean, out_rms, nfreq, nt, axis, i_in, w_in, stride, eps_multiplier);
+
+    if (two_pass)
+	reference_wrms_iterate(out_mean, out_rms, nfreq, nt, axis, i_in, w_in, stride, eps_multiplier);
+}
 
 // -------------------------------------------------------------------------------------------------
 
@@ -67,6 +106,7 @@ static void _ref_iclip(int nfreq, int nt, const float *i_in, float *w_in, int st
 {
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
+	    // Note: ">" here (not ">="), so that we always mask if thresh=0.
 	    if (abs(i_in[ifreq*stride+it] - mean) > thresh)
 		w_in[ifreq*stride+it] = 0.0;
 	}
@@ -123,9 +163,13 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     wrms.compute_wrms(&i_in[0], &w_in[0], stride);
 
     // The rest of this routine is devoted to computing something to compare to!
-    // Outputs from reference wrms will go here.
-    vector<float> ref_mean(nout, 0.0);
-    vector<float> ref_rms(nout, 0.0);
+    // Outputs from reference wrms will go here.  We call reference_wrms_compute() twice,
+    // with different epsilon_multipliers, in order to make the test roundoff-robust.
+
+    vector<float> refc_mean(nout, 0.0);   // refc = "conservative" (eps_multiplier=1.5)
+    vector<float> refc_rms(nout, 0.0);
+    vector<float> refp_mean(nout, 0.0);   // refp = "permissive" (eps_multiplier=0.5)
+    vector<float> refp_rms(nout, 0.0);
 
     // Temporary buffers.
     vector<float> i_ds(nfreq_ds * nt_ds, 0.0);
@@ -142,7 +186,8 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     }
 
     // Step 3: run reference wrms kernel.  Note that the reference kernel gets to assume (Df,Dt,niter) = (1,1,1).
-    reference_wrms(&ref_mean[0], &ref_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds);
+    reference_wrms_compute(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 1.5);
+    reference_wrms_compute(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 0.5);
 
 #if 0
     for (int i = 0; i < nout; i++)
@@ -150,9 +195,13 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 #endif
 
     // Step 4: compare outputs!    
+
     for (int i = 0; i < nout; i++) {
-	rf_assert(abs(wrms.out_mean[i] - ref_mean[i]) < 1.0e-4);
-	rf_assert(abs(wrms.out_rms[i] - ref_rms[i]) < 1.0e-4);
+	float eps = 1.0e-4 * abs(refp_mean[i]) + 1.0e-4 * refp_rms[i];
+	rf_assert(abs(wrms.out_mean[i] - refc_mean[i]) <= eps);
+	rf_assert(abs(wrms.out_mean[i] - refp_mean[i]) <= eps);
+	rf_assert(refc_rms[i] <= wrms.out_rms[i] + eps);
+	rf_assert(wrms.out_rms[i] <= refp_rms[i] + eps);
     }
 }
 
