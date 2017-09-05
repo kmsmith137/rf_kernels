@@ -364,9 +364,15 @@ struct _wrms_first_pass;
 template<typename T, int S, bool Hflag>
 struct _wrms_first_pass<T,S,Hflag,true>
 {
-    simd_t<T,S> wsum = 0;
-    simd_t<T,S> wisum = 0;
-    
+    simd_t<T,S> wsum;
+    simd_t<T,S> wisum;
+
+    _wrms_first_pass()
+    {
+	wsum = simd_t<T,S>::zero();
+	wisum = simd_t<T,S>::zero();
+    }
+
     // Callback for _wi_downsampler.
     inline void ds_put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival)
     {
@@ -378,8 +384,8 @@ struct _wrms_first_pass<T,S,Hflag,true>
     template<typename Tbuf>
     inline void finalize(const Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var)
     {
-	const simd_t<T,S> zero = 0;
-	const simd_t<T,S> one = 1;
+	const simd_t<T,S> zero = 0.0;
+	const simd_t<T,S> one = 1.0;
 	
 	_hsum<Hflag> (wisum);
 	_hsum<Hflag> (wsum);
@@ -410,9 +416,16 @@ struct _wrms_first_pass<T,S,Hflag,true>
 template<typename T, int S, bool Hflag>
 struct _wrms_first_pass<T,S,Hflag,false>
 {
-    simd_t<T,S> wsum = 0;
-    simd_t<T,S> wisum = 0;
-    simd_t<T,S> wiisum = 0;
+    simd_t<T,S> wsum;
+    simd_t<T,S> wisum;
+    simd_t<T,S> wiisum;
+
+    _wrms_first_pass()
+    {
+	wsum = simd_t<T,S>::zero();
+	wisum = simd_t<T,S>::zero();
+	wiisum = simd_t<T,S>::zero();
+    }
     
     // Callback for _wi_downsampler.
     inline void ds_put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival)
@@ -426,8 +439,8 @@ struct _wrms_first_pass<T,S,Hflag,false>
     template<typename Tbuf>
     inline void finalize(const Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var)
     {
-	const simd_t<T,S> zero = 0;
-	const simd_t<T,S> one = 1;
+	const simd_t<T,S> zero(0.0);
+	const simd_t<T,S> one(1.0);
 
 	_hsum<Hflag> (wsum);
 	_hsum<Hflag> (wisum);
