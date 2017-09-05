@@ -131,7 +131,106 @@ struct _wrms_buf_linear
     }
 
 };
+
+
+template<typename T, int S>
+struct _wrms_buf_scattered
+{
+    const T *i_buf;
+    const T *w_buf;
+    const int nfreq;
+    const int stride;
+
+    _wrms_buf_scattered(const T *i_buf_, const T *w_buf_, int nfreq_, int stride_) : 
+	i_buf(i_buf_), 
+	w_buf(w_buf_), 
+	nfreq(nfreq_),
+	stride(stride_)
+    { }
+
+
+    inline void _first_pass(simd_t<T,S> &wsum, simd_t<T,S> &wisum) const
+    {
+	wsum = wisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+
+	    wisum += wval * ival;
+	    wsum += wval;
+	}
+    }
+
     
+    inline simd_t<T,S> _second_pass(simd_t<T,S> mean) const
+    {
+	simd_t<T,S> wiisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    
+	    ival -= mean;
+	    wiisum += wval * ival * ival;
+	}
+
+	return wiisum;
+    }
+
+
+    inline void _single_pass(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum) const
+    {
+	wsum = wisum = wiisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    
+	    simd_t<T,S> wival = wval * ival;
+	    wiisum += wival * ival;
+	    wisum += wival;
+	    wsum += wval;
+	}
+    }
+
+    
+    inline void _iterate(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum, simd_t<T,S> mean, simd_t<T,S> thresh) const
+    {
+	wsum = wisum = wiisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    
+	    // Use mean from previous iteration to (hopefully!) improve numerical stability.
+	    ival -= mean;
+	    
+	    // Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+	    simd_t<T,S> valid = (ival.abs() < thresh);
+	    wval &= valid;
+	    
+	    simd_t<T,S> wival = wval * ival;
+	    wiisum += wival * ival;
+	    wisum += wival;
+	    wsum += wval;
+	}
+    }
+    
+
+    // For intensity_clipper.
+    inline simd_t<T,S> get_mask(simd_t<T,S> mean, simd_t<T,S> thresh, int ifreq) const
+    {
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
+	ival -= mean;
+
+	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+	simd_t<T,S> valid = (ival.abs() < thresh);
+	return valid;
+    }
+
+};
+
 
 // -------------------------------------------------------------------------------------------------
 //

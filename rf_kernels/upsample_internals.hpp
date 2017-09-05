@@ -24,6 +24,8 @@ template<typename T, int S, int D> using simd_upsampler = simd_helpers::simd_ups
 // -------------------------------------------------------------------------------------------------
 //
 // _mask_strided<N> (T *wp, simd_t<T,S> mask, int stride)
+//
+// Note: intended as a helper for upsampling kernels, but also called directly in std_dev_clipper_internals.hpp
 
 
 template<int N, typename T, int S, typename std::enable_if<(N==0),int>::type = 0>

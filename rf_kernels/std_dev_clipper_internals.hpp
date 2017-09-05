@@ -66,7 +66,7 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
 }
 
 
-template<typename T, int S, int DfX, int DtX, bool TwoPass>
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
 inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
 {
     constexpr bool Hflag = false;
@@ -122,6 +122,8 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
 
 
 // -------------------------------------------------------------------------------------------------
+//
+// <1,1> kernels.
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
@@ -151,6 +153,40 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
 	    continue;
 
 	memset(in_w + ifreq*stride, 0, nt_chunk * sizeof(T));
+    }
+}
+
+
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
+inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
+{
+    constexpr bool Hflag = false;
+    
+    const int nfreq = sd->nfreq;
+    const int nt_chunk = sd->nt_chunk;
+
+    float *tmp_v = sd->tmp_v;
+
+    for (int it = 0; it < nt_chunk; it += S) {
+	_wrms_buf_scattered<T,S> buf(in_i+it, in_w+it, nfreq, stride);
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
+		
+	simd_t<T,S> mean, var;
+	fp.run(buf, mean, var);
+
+	simd_helpers::simd_store(tmp_v + it, var);
+    }
+
+    sd->_clip_1d();
+
+    constexpr int R = 8;
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq += R) {
+	for (int it = 0; it < nt_chunk; it += S) {
+	    simd_t<T,S> v = simd_helpers::simd_load<T,S> (tmp_v + it);
+	    simd_t<T,S> mask = (v > simd_t<T,S>::zero());
+	    _mask_strided<R> (in_w + ifreq*stride + it, mask, stride);
+	}
     }
 }
 
