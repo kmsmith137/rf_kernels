@@ -129,7 +129,6 @@ struct _wrms_buf_linear
 	simd_t<T,S> valid = (ival.abs() < thresh);
 	return valid;
     }
-
 };
 
 
@@ -350,7 +349,12 @@ struct _wrms_buf_strided
 
 
 template<bool Hflag, typename T, int S, typename std::enable_if<Hflag,int>::type = 0>
-inline void _hsum(simd_t<T,S> &x) { x = x.horizontal_sum(); }
+inline void _hsum(simd_t<T,S> &x) 
+{
+    // The call to equalize() may not be strictly necessary, but eliminates weird behavior in corner cases.
+    x = x.horizontal_sum(); 
+    x = x.equalize();
+}
 
 template<bool Hflag, typename T, int S, typename std::enable_if<(!Hflag),int>::type = 0>
 inline void _hsum(simd_t<T,S> &x) { }
