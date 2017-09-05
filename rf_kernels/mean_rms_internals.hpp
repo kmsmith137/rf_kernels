@@ -228,7 +228,114 @@ struct _wrms_buf_scattered
 	simd_t<T,S> valid = (ival.abs() < thresh);
 	return valid;
     }
+};
 
+
+template<typename T, int S>
+struct _wrms_buf_strided
+{
+    const T *i_buf;
+    const T *w_buf;
+    const int nfreq;
+    const int nt_chunk;
+    const int stride;
+
+    _wrms_buf_strided(const T *i_buf_, const T *w_buf_, int nfreq_, int nt_chunk_, int stride_) :
+	i_buf(i_buf_),
+	w_buf(w_buf_),
+	nfreq(nfreq_),
+	nt_chunk(nt_chunk_),
+	stride(stride_)
+    { }
+
+    
+    inline void _first_pass(simd_t<T,S> &wsum, simd_t<T,S> &wisum) const
+    {
+	wsum = wisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it += S) {
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+
+		wisum += wval * ival;
+		wsum += wval;
+	    }
+	}
+    }
+
+    
+    inline simd_t<T,S> _second_pass(simd_t<T,S> mean) const
+    {
+	simd_t<T,S> wiisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it += S) {
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+	    
+		ival -= mean;
+		wiisum += wval * ival * ival;
+	    }
+	}
+
+	return wiisum;
+    }
+
+
+    inline void _single_pass(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum) const
+    {
+	wsum = wisum = wiisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it += S) {
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+	    
+		simd_t<T,S> wival = wval * ival;
+		wiisum += wival * ival;
+		wisum += wival;
+		wsum += wval;
+	    }
+	}
+    }
+
+    
+    inline void _iterate(simd_t<T,S> &wsum, simd_t<T,S> &wisum, simd_t<T,S> &wiisum, simd_t<T,S> mean, simd_t<T,S> thresh) const
+    {
+	wsum = wisum = wiisum = simd_t<T,S>::zero();
+
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it += S) {
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+	    
+		// Use mean from previous iteration to (hopefully!) improve numerical stability.
+		ival -= mean;
+		
+		// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+		simd_t<T,S> valid = (ival.abs() < thresh);
+		wval &= valid;
+		
+		simd_t<T,S> wival = wval * ival;
+		wiisum += wival * ival;
+		wisum += wival;
+		wsum += wval;
+	    }
+	}
+    }
+    
+
+    // For intensity_clipper.
+    inline simd_t<T,S> get_mask(simd_t<T,S> mean, simd_t<T,S> thresh, int ifreq, int it) const
+    {
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
+	ival -= mean;
+
+	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
+	simd_t<T,S> valid = (ival.abs() < thresh);
+	return valid;
+    }
 };
 
 
@@ -461,7 +568,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 }
 
 
-template<typename T, int S, int DfX, int DtX, bool TwoPass>
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
 inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     constexpr int Hflag = true;
@@ -556,6 +663,33 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 	simd_helpers::simd_store(out_mean + it, mean);
 	simd_helpers::simd_store(out_rms + it, var.sqrt());
     }	
+}
+
+
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
+inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+{
+    constexpr int Hflag = true;
+    
+    const int nfreq = wp->nfreq;
+    const int nt = wp->nt_chunk;
+    const int niter = wp->niter;
+    const simd_t<T,S> sigma = wp->sigma;
+
+    float *out_mean = wp->out_mean;
+    float *out_rms = wp->out_rms;
+
+    _wrms_buf_strided<T,S> buf(in_i, in_w, nfreq, nt, stride);
+    _wrms_first_pass<T,S,Hflag,TwoPass> fp;
+
+    simd_t<T,S> mean, var;
+    fp.run(buf, mean, var);
+
+    _wrms_iterate<Hflag> (buf, mean, var, niter-1, sigma);
+
+    simd_t<T,S> rms = var.sqrt();
+    out_mean[0] = mean.template extract<0> ();
+    out_rms[0] = rms.template extract<0> ();
 }
 
 
