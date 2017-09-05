@@ -137,12 +137,49 @@ static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in
 
 static void _simulate_data(std::mt19937 &rng, float *intensity, float *weights, int n, bool permute)
 {
+    float wsum = 0.0;
+    float wisum = 0.0;
+    float wiisum = 0.0;
+
+    // Give simulated data a 15% chance of being "sparse".
     float pnonzero = (uniform_rand(rng) < 0.1) ? (1.5/n) : 1.0;
 
+    // Simulate data.
     for (int i = 0; i < n; i++) {
 	intensity[i] = uniform_rand(rng, -1.0, 1.0);
 	weights[i] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
+
+	wsum += weights[i];
+	wisum += weights[i] * intensity[i];
     }
+
+    if (wsum == 0.0)
+	return;
+
+    // Now normalize simulated data to (mean,rms)=(0,1),
+    // so that we can set the (mean,rms) to specified values next.
+
+    float mean = wisum / wsum;
+
+    for (int i = 0; i < n; i++) {
+	intensity[i] -= mean;
+	wiisum += square(intensity[i]);
+    }
+
+    float rms = sqrt(wiisum/wsum);
+
+    for (int i = 0; i < n; i++)
+	intensity[i] /= rms;
+
+    // Decide what we want the (mean,rms) to be.
+
+    mean = uniform_rand(rng, -1.0, 1.0);
+    rms = uniform_rand(rng);
+
+    // Assign specified (mean,rms) to the simulated data.
+
+    for (int i = 0; i < n; i++)
+	intensity[i] = rms * intensity[i] + mean;
 }
 
 
@@ -209,6 +246,7 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     wrms.compute_wrms(&i_in[0], &w_in[0], stride);
 
     // The rest of this routine is devoted to computing something to compare to!
+
     // Outputs from reference wrms will go here.  We call reference_wrms_compute() twice,
     // with different epsilon_multipliers, in order to make the test roundoff-robust.
 
@@ -220,44 +258,72 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     // Temporary buffers.
     vector<float> i_ds(nfreq_ds * nt_ds, 0.0);
     vector<float> w_ds(nfreq_ds * nt_ds, 0.0);
-	
-    // Step 1: downsample
-    rf_kernels::wi_downsampler ds(Df, Dt);
-    ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
 
-    // Step 2: reference kernel.
+    // This will store the initial mean "hint" used in the last iteration of the wrms kernel.
+    // This is needed to assign statistical errors to the output wrms.
+    vector<float> mean_hint(nout, 0.0);
+
+    if (two_pass)
+	memcpy(&mean_hint[0], wrms.out_mean, nout * sizeof(float));
+	
+    // Step 1: apply reference kernel.
+    // Warning: we may end up overwriting the 'w_in' array (with an intensity clipper),
+    // but that's OK, we won't need it in step 2.
+
     if (niter == 1) {
+	rf_kernels::wi_downsampler ds(Df, Dt);
+	ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
+
 	reference_wrms_compute(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 1.5);
 	reference_wrms_compute(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 0.5);
     }
     else {
 	// The following logic is convenient but does a little redundant computation!
-	// Call the fast wrms kernel with (N-1) iterations, to initialize the 'mean' array needed by reference_wrms_iterate().
-	rf_kernels::weighted_mean_rms wrms2(nfreq_ds, nt_ds, axis, 1, 1, niter-1, sigma, two_pass);
-	wrms2.compute_wrms(&i_ds[0], &w_ds[0], nt_ds);
+	// Call the fast wrms kernel with (N-1) iterations, to initialize the 'mean_hint' array needed by reference_wrms_iterate().
+	rf_kernels::weighted_mean_rms wrms2(nfreq, nt_chunk, axis, Df, Dt, niter-1, sigma, two_pass);
+	wrms2.compute_wrms(&i_in[0], &w_in[0], stride);
+
 	memcpy(&refc_mean[0], wrms2.out_mean, nout * sizeof(float));
 	memcpy(&refp_mean[0], wrms2.out_mean, nout * sizeof(float));
+	memcpy(&mean_hint[0], wrms2.out_mean, nout * sizeof(float));
 	
 	// Account for the first (niter-1) iterations by clipping.
-	rf_kernels::intensity_clipper ic(nfreq_ds, nt_ds, axis, sigma, 1, 1, niter-1, 0, two_pass);
-	ic.clip(&i_ds[0], &w_ds[0], nt_ds);
+	rf_kernels::intensity_clipper ic(nfreq, nt_chunk, axis, sigma, Df, Dt, niter-1, 0, two_pass);
+	ic.clip(&i_in[0], &w_in[0], stride);
+
+	rf_kernels::wi_downsampler ds(Df, Dt);
+	ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
 
 	reference_wrms_iterate(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 1.5);
 	reference_wrms_iterate(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 0.5);
     }
 
-    // Step 3: compare outputs!    
-    
+    // Step 2: compare outputs!    
+
+    // First we decide what statistical errors are allowed on the mean and rms.
+
+    vector<float> eps_m(nout, 0.0);
+    vector<float> eps_r(nout, 0.0);
+
+    for (int i = 0; i < nout; i++) {
+	float r = wrms.out_rms[i];
+	float m = abs(mean_hint[i]) + abs(wrms.out_mean[i]);
+	float dm = abs(mean_hint[i] - wrms.out_mean[i]);
+
+	eps_m[i] = (1.0e-4 * m) + (1.0e-4 * r);
+	eps_r[i] = (1.0e-2 * sqrt(dm)) + (1.0e-4 * m) + (1.0e-4 * r);
+    }
+
+    // Now the comparison..
+
     int icmp = 0;
 
     try {
 	while (icmp < nout) {
-	    float eps = 1.0e-4 * abs(wrms.out_mean[icmp]) + 1.0e-4 * wrms.out_rms[icmp];
-
 	    if (wrms.out_rms[icmp] > 0) {
 		rf_assert(refp_rms[icmp] > 0);
-		rf_assert(abs(wrms.out_rms[icmp] - refp_rms[icmp]) <= eps);
-		rf_assert(abs(wrms.out_mean[icmp] - refp_mean[icmp]) <= eps);
+		rf_assert(abs(wrms.out_rms[icmp] - refp_rms[icmp]) <= eps_m[icmp]);
+		rf_assert(abs(wrms.out_mean[icmp] - refp_mean[icmp]) <= eps_r[icmp]);
 	    }
 	    else
 		rf_assert(refc_rms[icmp] == 0);
@@ -280,7 +346,8 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 	cout << "    failed at i=" << icmp << endl
 	     << "    fast: mean=" << wrms.out_mean[icmp] << ", rms=" << wrms.out_rms[icmp] << endl
 	     << "    refc: mean=" << refc_mean[icmp] << ", rms=" << refc_rms[icmp] << endl
-	     << "    refp: mean=" << refp_mean[icmp] << ", rms=" << refp_rms[icmp] << endl;
+	     << "    refp: mean=" << refp_mean[icmp] << ", rms=" << refp_rms[icmp] << endl
+	     << "    eps_m=" << eps_m[icmp] << ", eps_r=" << eps_r[icmp] << ", mean_hint=" << mean_hint[icmp] << endl;
 
 	exit(1);
     }
@@ -399,7 +466,7 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 	int Df = 1 << randint(rng, 0, 6);
 	int Dt = 1 << randint(rng, 0, 6);
 	int niter = randint(rng, niter_min, niter_max+1);
-	int nfreq = 8 * Df * randint(rng, 1, 17);  // FIXME
+	int nfreq = Df * randint(rng, 1, 65);
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.5, 1.7);
@@ -419,7 +486,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_m
 	int Df = 1 << randint(rng, 0, 6);
 	int Dt = 1 << randint(rng, 0, 6);
 	int niter = randint(rng, niter_min, niter_max+1);
-	int nfreq = 8 * Df * randint(rng, 1, 17); // FIXME
+	int nfreq = Df * randint(rng, 1, 65);
 	int nt = 8 * Dt * randint(rng, 1, 17);
         int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.0, 1.5);
@@ -439,8 +506,6 @@ int main(int argc, char **argv)
     std::random_device rd;
     std::mt19937 rng(rd());
 
-    cout << "reminder: test-intensity-clipper does not have complete generality yet" << endl;
-    
     test_wrms(rng, 1, 1);
     test_intensity_clipper(rng, 1, 1);
 

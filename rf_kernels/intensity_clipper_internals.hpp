@@ -101,7 +101,7 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
 	_wrms_iterate<Hflag> (buf, mean, var, niter-1, iter_sigma);
 	
 	// Note sigma here (not iter_sigma)
-	simd_t<T,S> thresh = sigma * var.sqrt();
+	simd_t<T,S> thresh = var.sqrt() * sigma;
 
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_t<T,S> mask = buf.get_mask(mean, thresh, ifreq_ds*S);
@@ -227,7 +227,7 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
 	_wrms_iterate<Hflag> (buf, mean, var, niter-1, iter_sigma);
 	
 	// Note sigma here (not iter_sigma)
-	simd_t<T,S> thresh = sigma * var.sqrt();
+	simd_t<T,S> thresh = var.sqrt() * sigma;
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    simd_t<T,S> mask = buf.get_mask(mean, thresh, ifreq);
