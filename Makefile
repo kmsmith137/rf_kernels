@@ -39,12 +39,12 @@ OFILES = \
 
 TESTBINFILES = \
   test-downsample \
+  test-upsample \
   test-intensity-clipper \
-  test-online-mask-filler \
-  test-polynomial-detrender \
-  test-spline-detrender \
   test-std-dev-clipper \
-  test-upsample
+  test-online-mask-filler \
+  test-spline-detrender \
+  test-polynomial-detrender
 
 TIMEBINFILES = \
   time-downsample \
