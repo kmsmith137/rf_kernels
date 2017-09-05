@@ -383,7 +383,7 @@ inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int ni
 // Low-level wrms kernels.
 
 
-template<typename T, int S, int DfX, int DtX, bool TwoPass>
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
 inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     constexpr int Hflag = true;
@@ -497,6 +497,38 @@ inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const 
     simd_t<T,S> rms = var.sqrt();
     out_mean[0] = mean.template extract<0> ();
     out_rms[0] = rms.template extract<0> ();
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
+inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+{
+    constexpr int Hflag = true;
+    
+    const int nfreq = wp->nfreq;
+    const int nt = wp->nt_chunk;
+    const int niter = wp->niter;
+    const simd_t<T,S> sigma = wp->sigma;
+
+    float *out_mean = wp->out_mean;
+    float *out_rms = wp->out_rms;
+	
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	_wrms_buf_linear<T,S> buf(in_i + ifreq*stride, in_w + ifreq*stride, nt);
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
+
+	simd_t<T,S> mean, var;
+	fp.run(buf, mean, var);
+
+	_wrms_iterate<Hflag> (buf, mean, var, niter-1, sigma);
+
+	simd_t<T,S> rms = var.sqrt();
+	out_mean[ifreq] = mean.template extract<0> ();
+	out_rms[ifreq] = rms.template extract<0> ();
+    }
 }
 
 
