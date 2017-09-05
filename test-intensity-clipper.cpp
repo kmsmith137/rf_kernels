@@ -47,12 +47,12 @@ static void _ref_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int 
     float eps_3 = 1.0e3 * eps_multiplier * simd_helpers::machine_epsilon<float> ();
 
     // Threshold variance at (eps_2 in_mean)^2.
-    // Note: use ">=" here (not ">") following rf_kernels/mean_rms_internals.hpp
-    if (var >= square(eps_2 * in_mean))
+    // Note: use "<" here (not "<=") following rf_kernels/mean_rms_internals.hpp
+    if (var < square(eps_2 * in_mean))
 	var = 0.0;
 
     // Threshold variance at (eps_3 dmean^2).
-    if (var >= eps_3 * square(dmean))
+    if (var < eps_3 * square(dmean))
 	var = 0.0;
 
     *inout_mean = in_mean + dmean;
@@ -179,22 +179,37 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     rf_kernels::wi_downsampler ds(Df, Dt);
     ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
 
-    // Step 2: account for the first (niter-1) iterations by clipping.
-    if (niter > 1) {
+    // Step 2: reference kernel.
+    if (niter == 1) {
+	reference_wrms_compute(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 1.5);
+	reference_wrms_compute(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 0.5);
+    }
+    else {
+	// The following logic is convenient but does a little redundant computation!
+	// Call the fast wrms kernel with (N-1) iterations, to initialize the 'mean' array needed by reference_wrms_iterate().
+	rf_kernels::weighted_mean_rms wrms2(nfreq_ds, nt_ds, axis, 1, 1, niter-1, sigma, two_pass);
+	wrms2.compute_wrms(&i_ds[0], &w_ds[0], nt_ds);
+	memcpy(&refc_mean[0], wrms2.out_mean, nout * sizeof(float));
+	memcpy(&refp_mean[0], wrms2.out_mean, nout * sizeof(float));
+	
+	// Account for the first (niter-1) iterations by clipping.
 	rf_kernels::intensity_clipper ic(nfreq_ds, nt_ds, axis, sigma, 1, 1, niter-1, 0, two_pass);
 	ic.clip(&i_ds[0], &w_ds[0], nt_ds);
+
+	reference_wrms_iterate(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 1.5);
+	reference_wrms_iterate(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 0.5);
     }
 
-    // Step 3: run reference wrms kernel.  Note that the reference kernel gets to assume (Df,Dt,niter) = (1,1,1).
-    reference_wrms_compute(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 1.5);
-    reference_wrms_compute(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 0.5);
-
 #if 0
-    for (int i = 0; i < nout; i++)
-	cout << "    " << i << " " << wrms.out_mean[i] << " " << ref_mean[i] << " " << wrms.out_rms[i] << " " << ref_rms[i] << endl;
+    for (int i = 0; i < nout; i++) {
+	cout << "    " << i 
+	     << " | " << wrms.out_mean[i] << " " << refc_mean[i] << " " << refp_mean[i]
+	     << " | " << wrms.out_rms[i] << " " << refc_rms[i] << " " << refp_rms[i]
+	     << endl;
+    }
 #endif
 
-    // Step 4: compare outputs!    
+    // Step 3: compare outputs!    
 
     for (int i = 0; i < nout; i++) {
 	float eps = 1.0e-4 * abs(refp_mean[i]) + 1.0e-4 * refp_rms[i];
