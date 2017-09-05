@@ -397,9 +397,14 @@ struct _wrms_first_pass<T,S,Hflag,true>
 	mean = wden * wisum;
 	simd_t<T,S> wiisum = buf._second_pass(mean);
 	
-	// FIXME need epsilons here?
 	_hsum<Hflag> (wiisum);
-	var = wden * wiisum;	
+	var = wden * wiisum;
+
+	// Threshold at (eps_2 mean)^2.
+	constexpr T eps_2 = 1.0e2 * simd_helpers::machine_epsilon<T> ();
+	simd_t<T,S> cutoff = simd_t<T,S>(eps_2) * mean;
+	simd_t<T,S> valid = (var >= cutoff*cutoff);   // decided to use ">=" here (not ">")
+	var &= valid;
     }
 
     // Run from scratch.
@@ -449,9 +454,14 @@ struct _wrms_first_pass<T,S,Hflag,false>
 	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
 	simd_t<T,S> wden = one / wsum_reg;
 	
-	// FIXME need epsilons here?
 	mean = wden * wisum;
 	var = wden * wiisum - mean * mean;
+
+	// Threshold at (eps_3 mean^2).
+	constexpr T eps_3 = 1.0e2 * simd_helpers::machine_epsilon<T> ();
+	simd_t<T,S> cutoff = simd_t<T,S>(eps_3) * mean * mean;
+	simd_t<T,S> valid = (var >= cutoff*cutoff);   // decided to use ">=" here (not ">")
+	var &= valid;
     }
 
     // Run from scratch.
@@ -492,8 +502,23 @@ inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int ni
 	simd_t<T,S> wden = one / wsum_reg;
 	simd_t<T,S> dmean = wden * wisum;
 	    
-	mean += dmean;
+	// Don't update mean yet (wait until after thresholding)
 	var = wden * wiisum - dmean*dmean;
+
+	// Threshold at (eps_2 in_mean)^2.
+	constexpr T eps_2 = 1.0e2 * simd_helpers::machine_epsilon<T> ();
+	simd_t<T,S> cutoff = simd_t<T,S>(eps_2) * mean;
+	simd_t<T,S> valid = (var >= cutoff*cutoff);   // decided to use ">=" here (not ">")
+	var &= valid;
+
+	// Threshold at (eps_3 dmean^2).
+	constexpr T eps_3 = 1.0e2 * simd_helpers::machine_epsilon<T> ();
+	cutoff = simd_t<T,S>(eps_3) * dmean * dmean;
+	valid = (var >= cutoff*cutoff);   // decided to use ">=" here (not ">")
+	var &= valid;
+
+	// Update mean.
+	mean += dmean;
     }
 }
 
