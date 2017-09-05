@@ -258,7 +258,7 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 	int nt = 8 * Dt * randint(rng, 1, 17);
 	int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.5, 1.7);
-	bool two_pass = true;  // FIXME
+	bool two_pass = randint(rng, 0, 2);
 
 	test_wrms(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, two_pass);
     }
@@ -279,7 +279,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_m
         int stride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.0, 1.5);
 	double iter_sigma = uniform_rand(rng, 1.5, 1.7);
-	bool two_pass = true;  // FIXME
+	bool two_pass = randint(rng, 0, 2);
 
 	test_intensity_clipper(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, iter_sigma, two_pass);
     }

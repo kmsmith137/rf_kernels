@@ -14,7 +14,7 @@ namespace rf_kernels {
 template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
 {
     // For upsampler.  Note std::min() can't be used in a constexpr!
@@ -37,7 +37,7 @@ inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T 
     _weight_upsampler_0d<T, S, Dfu, DtX> us0(Dt);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	_wrms_first_pass<T,S,Hflag> fp;
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	ds1.downsample_1d(fp, nt_ds, stride,
 			  in_i + ifreq_ds * Df * stride,
@@ -66,7 +66,7 @@ inline void kernel_intensity_clipper_taxis(const intensity_clipper *ic, const T 
 }
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
 {
     constexpr bool Hflag = false;
@@ -87,7 +87,7 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
     _weight_upsampler_0f<T,S,DfX,DtX> us0(Df, Dt);
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
-	_wrms_first_pass<T,S,Hflag> fp;
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	ds1.downsample_1f(fp, nfreq_ds, stride,
 			  in_i + it_ds * Dt,
@@ -111,7 +111,7 @@ inline void kernel_intensity_clipper_faxis(const intensity_clipper *ic, const T 
 }
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_intensity_clipper_naxis(const intensity_clipper *ic, const T *in_i, T *in_w, int stride)
 {
     // For upsampler.  Note std::min() can't be used in a constexpr!
@@ -130,7 +130,7 @@ inline void kernel_intensity_clipper_naxis(const intensity_clipper *ic, const T 
     float *tmp_w = ic->tmp_w;
     
     _wrms_buf_linear<T,S> buf(tmp_i, tmp_w, nfreq_ds * nt_ds);
-    _wrms_first_pass<T,S,Hflag> fp;
+    _wrms_first_pass<T,S,Hflag,TwoPass> fp;
     
     _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
     _weight_upsampler_0d<T, S, Dfu, DtX> us0(Dt);

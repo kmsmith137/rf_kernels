@@ -23,11 +23,7 @@ struct intensity_clipper_timing_thread : public kernel_timing_thread {
 		// for (axis_type axis: { AXIS_FREQ, AXIS_TIME, AXIS_NONE })  {
 		for (axis_type axis: { AXIS_FREQ, AXIS_TIME }) {
 		    for (int ic_niter: {1,4}) {
-			// for (bool two_pass: {false,true}) {
-			for (bool two_pass: {true}) {
-			    if ((ic_niter > 1) && !two_pass)
-				continue;  // don't bother timing this case.
-			    
+			for (bool two_pass: {false,true}) {
 			    stringstream ss;
 			    ss << "intensity_clipper(axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << ic_niter << ",two_pass=" << two_pass << ")";
 			    

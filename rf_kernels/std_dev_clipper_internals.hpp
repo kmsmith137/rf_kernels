@@ -22,7 +22,7 @@ template<typename T, int S> using simd_t = simd_helpers::simd_t<T,S>;
 extern void clip_1d(int n, float *tmp_sd, int *tmp_valid, double sigma);
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
 {
     constexpr bool Hflag = true;
@@ -41,7 +41,7 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
     _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, Dt);
 
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
-	_wrms_first_pass<T,S,Hflag> fp;
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	ds1.downsample_1d(fp, nt_ds, stride,
 			  in_i + ifreq_ds * Df * stride,
@@ -66,7 +66,7 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
 }
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
 {
     constexpr bool Hflag = false;
@@ -85,7 +85,7 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
     _wi_downsampler_1f<T,S,DfX,DtX> ds1(Df, Dt);
 
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
-	_wrms_first_pass<T,S,Hflag> fp;
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	ds1.downsample_1f(fp, nfreq_ds, stride,
 			  in_i + it_ds * Dt,

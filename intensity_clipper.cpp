@@ -63,9 +63,13 @@ inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
 
-    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper_taxis<float,8,Df,Dt>;
-    kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = kernel_intensity_clipper_faxis<float,8,Df,Dt>;
-    kernel_table[{{AXIS_NONE,Df,Dt,1}}] = kernel_intensity_clipper_naxis<float,8,Df,Dt>;
+    kernel_table[{{AXIS_TIME,Df,Dt,0}}] = kernel_intensity_clipper_taxis<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,0}}] = kernel_intensity_clipper_faxis<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_NONE,Df,Dt,0}}] = kernel_intensity_clipper_naxis<float,8,Df,Dt,false>;
+    
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_intensity_clipper_taxis<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = kernel_intensity_clipper_faxis<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_NONE,Df,Dt,1}}] = kernel_intensity_clipper_naxis<float,8,Df,Dt,true>;
 }
 
 

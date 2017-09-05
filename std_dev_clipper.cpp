@@ -65,9 +65,12 @@ template<int Df, int Dt, typename enable_if<(Dt>0),int>::type = 0>
 inline void _populate1()
 {
     _populate1<Df,(Dt/2)> ();
+    
+    kernel_table[{{AXIS_TIME,Df,Dt,0}}] = kernel_std_dev_clipper_taxis<float,8,Df,Dt,false>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,0}}] = kernel_std_dev_clipper_faxis<float,8,Df,Dt,false>;
 
-    kernel_table[{{AXIS_TIME,Df,Dt,true}}] = kernel_std_dev_clipper_taxis<float,8,Df,Dt>;
-    kernel_table[{{AXIS_FREQ,Df,Dt,true}}] = kernel_std_dev_clipper_faxis<float,8,Df,Dt>;
+    kernel_table[{{AXIS_TIME,Df,Dt,1}}] = kernel_std_dev_clipper_taxis<float,8,Df,Dt,true>;
+    kernel_table[{{AXIS_FREQ,Df,Dt,1}}] = kernel_std_dev_clipper_faxis<float,8,Df,Dt,true>;
 }
 
 

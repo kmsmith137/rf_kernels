@@ -207,7 +207,7 @@ static void test_std_dev_clipper(std::mt19937 &rng)
 	int stride = randint(rng, nt, 2*nt);
 	axis_type axis = randint(rng, 0, 2) ? AXIS_FREQ : AXIS_TIME;
 	double sigma = uniform_rand(rng, 1.0, 1.5);
-	bool two_pass = true;   // FIXME
+	bool two_pass = randint(rng, 0, 2);
 	
 	test_std_dev_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt, two_pass);
     }

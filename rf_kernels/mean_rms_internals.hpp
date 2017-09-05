@@ -102,8 +102,6 @@ struct _wrms_buf_linear
 // -------------------------------------------------------------------------------------------------
 //
 // _wrms_first_pass
-//
-// To be templated shortly with "TwoPass".
 
 
 template<bool Hflag, typename T, int S, typename std::enable_if<Hflag,int>::type = 0>
@@ -113,8 +111,13 @@ template<bool Hflag, typename T, int S, typename std::enable_if<(!Hflag),int>::t
 inline void _hsum(simd_t<T,S> &x) { }
 
 
+template<typename T, int S, bool Hflag, bool TwoPass>
+struct _wrms_first_pass;
+
+
+// TwoPass = true
 template<typename T, int S, bool Hflag>
-struct _wrms_first_pass
+struct _wrms_first_pass<T,S,Hflag,true>
 {
     simd_t<T,S> wsum = 0;
     simd_t<T,S> wisum = 0;
@@ -146,6 +149,43 @@ struct _wrms_first_pass
 	// FIXME need epsilons here?
 	_hsum<Hflag> (wiisum);
 	var = wden * wiisum;	
+    }
+};
+
+
+// TwoPass = false
+template<typename T, int S, bool Hflag>
+struct _wrms_first_pass<T,S,Hflag,false>
+{
+    simd_t<T,S> wsum = 0;
+    simd_t<T,S> wisum = 0;
+    simd_t<T,S> wiisum = 0;
+    
+    // Callback for _wi_downsampler.
+    inline void ds_put(simd_t<T,S> ival, simd_t<T,S> wval, simd_t<T,S> wival)
+    {
+	wsum += wval;
+	wisum += wival;
+	wiisum += wival * ival;
+    }
+
+    // Called after _wi_downsampler.
+    template<typename Tbuf>
+    inline void finalize(const Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var)
+    {
+	const simd_t<T,S> zero = 0;
+	const simd_t<T,S> one = 1;
+
+	_hsum<Hflag> (wsum);
+	_hsum<Hflag> (wisum);
+	_hsum<Hflag> (wiisum);
+	
+	simd_t<T,S> wsum_reg = blendv(wsum.compare_gt(zero), wsum, one);
+	simd_t<T,S> wden = one / wsum_reg;
+	
+	// FIXME need epsilons here?
+	mean = wden * wisum;
+	var = wden * wiisum - mean * mean;
     }
 };
     
@@ -189,7 +229,7 @@ inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int ni
 // Low-level wrms kernels.
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     constexpr int Hflag = true;
@@ -209,7 +249,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
     _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
 	
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
-	_wrms_first_pass<T,S,Hflag> fp;
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	ds1.downsample_1d(fp, nt_ds, stride,
 			  in_i + ifreq * Df * stride,
@@ -228,7 +268,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 }
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     constexpr int Hflag = false;
@@ -249,7 +289,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     _wi_downsampler_1f<T,S,DfX,DtX> ds1(Df, Dt);
 
     for (int it = 0; it < nt_ds; it += S) {
-	_wrms_first_pass<T,S,Hflag> fp;
+	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	ds1.downsample_1f(fp, nfreq_ds, stride,
 			  in_i + it*Dt,
@@ -267,7 +307,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 }
 
 
-template<typename T, int S, int DfX, int DtX>
+template<typename T, int S, int DfX, int DtX, bool TwoPass>
 inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
 {
     constexpr int Hflag = true;
@@ -285,7 +325,7 @@ inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const 
 
     _wi_downsampler_1d<T,S,DfX,DtX> ds1(Df, wp->Dt);
     _wrms_buf_linear<T,S> buf(tmp_i, tmp_w, nfreq_ds * nt_ds);
-    _wrms_first_pass<T,S,Hflag> fp;
+    _wrms_first_pass<T,S,Hflag,TwoPass> fp;
     
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {	
 	ds1.downsample_1d(fp, nt_ds, stride,

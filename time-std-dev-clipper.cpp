@@ -30,7 +30,7 @@ struct std_dev_clipper_timing_thread : public kernel_timing_thread {
 	for (int Df: { 1, 2, 4, 8, 16, 64, 256 }) {
 	    for (int Dt: { 1, 2, 4, 8, 16 }) {
 		for (axis_type axis: { AXIS_FREQ, AXIS_TIME })  {
-		    for (bool two_pass: {true}) {
+		    for (bool two_pass: {false,true}) {
 			stringstream ss;
 			ss << "std_dev_clipper(axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",two_pass=" << two_pass << ")";
 			    
