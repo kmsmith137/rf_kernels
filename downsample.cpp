@@ -14,82 +14,60 @@ namespace rf_kernels {
 #endif
 
 
-// -------------------------------------------------------------------------------------------------
+struct downsampling_kernel_table {
+    // Usage: kernel(ds, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride)
+    using kernel_t = void (*)(const wi_downsampler *, int, int, float *, float *, int, const float *, const float *, int);
+
+    unordered_map<array<int,2>, kernel_t> kernel_table;   // (Df,Dt) -> kernel
 
 
-// Inner namespace for the kernel table
-// Must have a different name for each kernel, otherwise gcc is happy but clang has trouble!
-namespace downsampling_kernel_table {
-#if 0
-}; // pacify emacs c-mode
-#endif
+    inline kernel_t get(int Df, int Dt)
+    {
+    	if ((Df > 8) && (Df % 8 == 0))
+	    Df = 16;
+	
+	if ((Dt > 8) && (Dt % 8 == 0))
+	    Dt = 16;
 
-// Usage: kernel(ds, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride)
-using kernel_t = void (*)(const wi_downsampler *, int, int, float *, float *, int, const float *, const float *, int);
-
-static unordered_map<array<int,2>, kernel_t> kernel_table;   // (Df,Dt) -> kernel
-
-
-inline void _no_kernel(int Df, int Dt)
-{
-    stringstream ss;
-    ss << "rf_kernels::wi_downsampler: (Df,Dt)=(" << Df << "," << Dt << ") is not supported";
-    throw runtime_error(ss.str());
-}
-
-
-inline kernel_t get_kernel(int Df, int Dt)
-{
-    if (Df > 8) {
-	if (_unlikely(Df % 8 != 0))
-	    _no_kernel(Df,Dt);
-	Df = 16;
-    }
-
-    if (Dt > 8) {
-	if (_unlikely(Dt % 8 != 0))
-	    _no_kernel(Df,Dt);
-	Dt = 16;
-    }
-
-    auto p = kernel_table.find({{Df,Dt}});
+	auto p = kernel_table.find({{Df,Dt}});
     
-    if (_unlikely(p == kernel_table.end()))
-	_no_kernel(Df, Dt);
+	if (_unlikely(p == kernel_table.end())) {
+	    stringstream ss;
+	    ss << "rf_kernels::wi_downsampler: (Df,Dt)=(" << Df << "," << Dt << ") is not supported";
+	    throw runtime_error(ss.str());
+	}
 
-    return p->second;
-}
+	return p->second;
+    }
+    
 
+    template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
+    inline void _populate1() { }
 
-template<int Df, int Dt, typename enable_if<(Dt==0),int>::type=0>
-inline void _populate1() { }
-
-template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
-inline void _populate1()
-{
-    _populate1<Df,(Dt/2)> ();
-    kernel_table[{{Df,Dt}}] = kernel_wi_downsample<float,8,Df,Dt>;
-}
-
-
-template<int Df, int Dt, typename enable_if<(Df==0),int>::type=0>
-inline void _populate2() { }
-
-// Called for (Df,Dt)=(*,8).
-template<int Df, int Dt, typename enable_if<(Df>0),int>::type=0>
-inline void _populate2()
-{
-    _populate2<(Df/2),Dt> ();
-    _populate1<Df,Dt> ();
-}
+    template<int Df, int Dt, typename enable_if<(Dt>0),int>::type=0>
+    inline void _populate1()
+    {
+	_populate1<Df,(Dt/2)> ();
+	kernel_table[{{Df,Dt}}] = kernel_wi_downsample<float,8,Df,Dt>;
+    }
 
 
-struct _initializer {
-    _initializer() { _populate2<16,16>(); }
-} _init;
+    template<int Df, int Dt, typename enable_if<(Df==0),int>::type=0>
+    inline void _populate2() { }
+    
+    template<int Df, int Dt, typename enable_if<(Df>0),int>::type=0>
+    inline void _populate2()
+    {
+	_populate2<(Df/2),Dt> ();
+	_populate1<Df,Dt> ();
+    }
 
 
-}  // namespace downsampling_kernel_table
+    downsampling_kernel_table()
+    {
+	_populate2<16,16>();
+    }
+} global_downsampling_kernel_table;
 
 
 // -------------------------------------------------------------------------------------------------
@@ -98,7 +76,7 @@ struct _initializer {
 wi_downsampler::wi_downsampler(int Df_, int Dt_) :
     Df(Df_),
     Dt(Dt_),
-    _f(downsampling_kernel_table::get_kernel(Df_,Dt_))
+    _f(global_downsampling_kernel_table.get(Df_,Dt_))
 { }
     
 
