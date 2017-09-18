@@ -74,7 +74,7 @@ inline void _kernel_detrend_accum_mv(simd_trimatrix<T,S,N> &outm, simd_ntuple<T,
 
 // -------------------------------------------------------------------------------------------------
 //
-// _kernel_detrend_t<T,S,N> (nfreq, nt, intensity, weights, stride, epsilon)
+// _kernel_detrend_t<T,S,N> (nfreq, nt, intensity, istride, weights, wstride, epsilon)
 //
 // Detrend along time (=fastest varying) axis of 2D strided array.
 // Note: the degree of the polynomial fit is (N-1), not N!
@@ -133,15 +133,15 @@ inline void _kernel_detrend_t_pass2(T *ivec, int nt, const simd_ntuple<T,S,N> &c
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, T *weights, int stride, double epsilon=1.0e-2)
+inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2)
 {
     // Caller should have asserted this already, but rechecking here should have negligible overhead
     if (_unlikely((nt % S) != 0))
 	throw std::runtime_error("rf_kernels internal error: nt is not divisible by S in _kernel_detrend_t()");
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	T *ivec = intensity + ifreq * stride;
-	T *wvec = weights + ifreq * stride;
+	T *ivec = intensity + ifreq * istride;
+	T *wvec = weights + ifreq * wstride;
 
 	simd_trimatrix<T,S,N> xmat;
 	simd_ntuple<T,S,N> xvec;
@@ -152,7 +152,7 @@ inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, T *weights, int s
 
 	if (!flags.is_all_ones()) {
 	    // Case 1: Cholesky factorization was badly conditioned
-	    memset(weights + ifreq*stride, 0, nt * sizeof(T));
+	    memset(weights + ifreq*wstride, 0, nt * sizeof(T));
 	    continue;
 	}
 
@@ -167,14 +167,14 @@ inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, T *weights, int s
 
 // -------------------------------------------------------------------------------------------------
 //
-// _kernel_detrend_f<T,S,N> (nfreq, nt, intensity, weights, stride, epsilon)
+// _kernel_detrend_f<T,S,N> (nfreq, nt, intensity, istride, weights, wstride, epsilon)
 //
 // Detrend along frequency (=slowest varying) axis of 2D strided array.
 // Note: the degree of the polynomial fit is (N-1), not N!
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_f_pass1(simd_trimatrix<T,S,N> &outm, simd_ntuple<T,S,N> &outv, int nfreq, const T *ivec, const T *wvec, int stride)
+inline void _kernel_detrend_f_pass1(simd_trimatrix<T,S,N> &outm, simd_ntuple<T,S,N> &outv, int nfreq, const T *ivec, int istride, const T *wvec, int wstride)
 {
     outm.setzero();
     outv.setzero();
@@ -185,8 +185,8 @@ inline void _kernel_detrend_f_pass1(simd_trimatrix<T,S,N> &outm, simd_ntuple<T,S
     for (int i = 0; i < nfreq; i++) {
 	T z = z0 + i*dz;
 
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (ivec + i*stride);
-	simd_t<T,S> wval = simd_helpers::simd_load<T,S> (wvec + i*stride);
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (ivec + i*istride);
+	simd_t<T,S> wval = simd_helpers::simd_load<T,S> (wvec + i*wstride);
 
 	simd_ntuple<T,S,N> pvec;
 	_kernel_legpoly_eval(pvec, simd_t<T,S>(z));
@@ -195,7 +195,7 @@ inline void _kernel_detrend_f_pass1(simd_trimatrix<T,S,N> &outm, simd_ntuple<T,S
 }
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_f_pass2(T *ivec, int nfreq, const simd_ntuple<T,S,N> &coeffs, int stride)
+inline void _kernel_detrend_f_pass2(T *ivec, int nfreq, const simd_ntuple<T,S,N> &coeffs, int istride)
 {
     T z0 = -(nfreq-1) / T(nfreq);
     T dz = 2.0 / T(nfreq);
@@ -206,40 +206,40 @@ inline void _kernel_detrend_f_pass2(T *ivec, int nfreq, const simd_ntuple<T,S,N>
 	simd_ntuple<T,S,N> pvec;
 	_kernel_legpoly_eval(pvec, simd_t<T,S>(z));
 
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (ivec + i*stride);
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (ivec + i*istride);
 
 	ival = pvec._vertical_dotn(coeffs, ival);
-	ival.storeu(ivec + i*stride);
+	ival.storeu(ivec + i*istride);
     }
 }
 
 
 // Zeros a complete block of S columns in the 'weights' array.
 template<typename T, int S>
-inline void _kernel_colzero_full(T *weights, int nfreq, int stride)
+inline void _kernel_colzero_full(T *weights, int nfreq, int wstride)
 {
     simd_t<T,S> z = simd_t<T,S>::zero();
 
     for (int i = 0; i < nfreq; i++)
-	z.storeu(weights + i*stride);
+	z.storeu(weights + i*wstride);
 }
 
 
 // Zeros a partial block of S columns in the 'weights' array.
 // Each word in the 'mask' array should be either 0 or -1=0xff..
 template<typename T, int S>
-inline void _kernel_colzero_partial(T *weights, int nfreq, int stride, simd_t<int,S> mask)
+inline void _kernel_colzero_partial(T *weights, int nfreq, int wstride, simd_t<int,S> mask)
 {
     for (int i = 0; i < nfreq; i++) {
-	simd_t<T,S> w = simd_helpers::simd_load<T,S> (weights + i*stride);
+	simd_t<T,S> w = simd_helpers::simd_load<T,S> (weights + i*wstride);
 	w = w.apply_mask(mask);
-	w.storeu(weights + i*stride);
+	w.storeu(weights + i*wstride);
     }
 }
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, T *weights, int stride, double epsilon=1.0e-2)
+inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2)
 {
     // Caller should have asserted this already, but rechecking here should have negligible overhead
     if (_unlikely((nt % S) != 0))
@@ -252,14 +252,14 @@ inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, T *weights, int s
 	simd_trimatrix<T,S,N> xmat;
 	simd_ntuple<T,S,N> xvec;
 
-	_kernel_detrend_f_pass1(xmat, xvec, nfreq, ivec, wvec, stride);
+	_kernel_detrend_f_pass1(xmat, xvec, nfreq, ivec, istride, wvec, wstride);
 
 	simd_t<int,S> flags = xmat.cholesky_in_place_checked(epsilon);
 
 	if (flags.is_all_zeros()) {
 	    // If we get here, then all columns of the weights array should be zeroed,
 	    // but the intensity array can be left unmodified.
-	    _kernel_colzero_full<T,S> (wvec, nfreq, stride);
+	    _kernel_colzero_full<T,S> (wvec, nfreq, wstride);
 	    continue;
 	}
 
@@ -269,13 +269,13 @@ inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, T *weights, int s
 	xmat.solve_lower_in_place(xvec);
 	xmat.solve_upper_in_place(xvec);
 	
-	_kernel_detrend_f_pass2(ivec, nfreq, xvec, stride);
+	_kernel_detrend_f_pass2(ivec, nfreq, xvec, istride);
 
 	if (flags.is_all_ones())
 	    continue;
 
 	// If we get here, then partial zeroing of the weights array is needed.
-	_kernel_colzero_partial<T,S> (wvec, nfreq, stride, flags);
+	_kernel_colzero_partial<T,S> (wvec, nfreq, wstride, flags);
     }
 }
 

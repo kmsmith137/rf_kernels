@@ -137,12 +137,13 @@ inline simd_trimatrix<T,S,N> hconst_simd_trimatrix(const T *p)
 struct random_chunk {
     const int nfreq;
     const int nt;
-    const int stride;
+    const int istride;
+    const int wstride;
     
     float *intensity = nullptr;
     float *weights = nullptr;
 
-    random_chunk(std::mt19937 &rng, int nfreq, int nt, int stride);
+    random_chunk(std::mt19937 &rng, int nfreq, int nt, int istride, int wstride);
     random_chunk(std::mt19937 &rng, int nfreq, int nt);
     ~random_chunk();
     
@@ -152,25 +153,29 @@ struct random_chunk {
 };
 
 
-random_chunk::random_chunk(std::mt19937 &rng, int nfreq_, int nt_, int stride_) :
-    nfreq(nfreq_), nt(nt_), stride(stride_)
+random_chunk::random_chunk(std::mt19937 &rng, int nfreq_, int nt_, int istride_, int wstride_) :
+    nfreq(nfreq_), nt(nt_), istride(istride_), wstride(wstride_)
 {
     assert(nfreq > 0);
     assert(nt > 0);
-    assert(stride >= nt);
+    assert(istride >= nt);
+    assert(wstride >= nt);
 
-    intensity = aligned_alloc<float> (nfreq * stride);
-    weights = aligned_alloc<float> (nfreq * stride);
+    intensity = aligned_alloc<float> (nfreq * istride);
+    weights = aligned_alloc<float> (nfreq * wstride);
 
-    for (int i = 0; i < nfreq * stride; i++) {
+    for (int i = 0; i < nfreq * istride; i++)
 	intensity[i] = uniform_rand(rng, 1.0, 2.0);
+
+    for (int i = 0; i < nfreq * wstride; i++)
 	weights[i] = uniform_rand(rng, 0.1, 1.0);
-    }
 }
 
 
 random_chunk::random_chunk(std::mt19937 &rng, int nfreq_, int nt_) :
-    random_chunk(rng, nfreq_, nt_, nt_ + std::uniform_int_distribution<>(0,4)(rng))
+    random_chunk(rng, nfreq_, nt_, 
+		 nt_ + std::uniform_int_distribution<>(0,4)(rng),  // istride
+		 nt_ + std::uniform_int_distribution<>(0,4)(rng))  // wstride
 { }
 
 
@@ -354,15 +359,15 @@ static void test_detrend_t_pass2(std::mt19937 &rng, int nt)
 
 
 template<typename T, int S, int N>
-static void test_detrend_t_nulling(std::mt19937 &rng, int nfreq, int nt, int stride)
+static void test_detrend_t_nulling(std::mt19937 &rng, int nfreq, int nt, int istride, int wstride)
 {
-    vector<T> intensity(nfreq * stride, 0.0);
-    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * stride, 0.1, 1.0);
+    vector<T> intensity(nfreq * istride, 0.0);
+    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * wstride, 0.1, 1.0);
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	randpoly(&intensity[ifreq*stride], rng, N-1, nt, 1);
+	randpoly(&intensity[ifreq*istride], rng, N-1, nt, 1);
 
-    _kernel_detrend_t<T,S,N> (nfreq, nt, &intensity[0], &weights[0], stride);
+    _kernel_detrend_t<T,S,N> (nfreq, nt, &intensity[0], istride, &weights[0], wstride);
 
     double epsilon = simd_helpers::maxabs(intensity);
 
@@ -374,32 +379,32 @@ static void test_detrend_t_nulling(std::mt19937 &rng, int nfreq, int nt, int str
 
 
 template<typename T, int S, int N>
-static void test_detrend_t_idempotency(std::mt19937 &rng, int nfreq, int nt, int stride)
+static void test_detrend_t_idempotency(std::mt19937 &rng, int nfreq, int nt, int istride, int wstride)
 {
-    vector<T> intensity = simd_helpers::uniform_randvec<T> (rng, nfreq * stride, 0.0, 1.0);
-    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * stride, 0.1, 1.0);
+    vector<T> intensity = simd_helpers::uniform_randvec<T> (rng, nfreq * istride, 0.0, 1.0);
+    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * wstride, 0.1, 1.0);
 
-    _kernel_detrend_t<T,S,N> (nfreq, nt, &intensity[0], &weights[0], stride);
+    _kernel_detrend_t<T,S,N> (nfreq, nt, &intensity[0], istride, &weights[0], wstride);
 
     // Give each row a 50% chance of being well-conditioned.
     vector<bool> well_conditioned(nfreq, true);
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	if (std::uniform_real_distribution<>()(rng) > 0.5) {
 	    well_conditioned[ifreq] = false;
-	    make_weights_badly_conditioned(&weights[ifreq*stride], rng, N-1, nt, 1);
+	    make_weights_badly_conditioned(&weights[ifreq*wstride], rng, N-1, nt, 1);
 	}
     }
 
     vector<T> intensity2 = intensity;
-    _kernel_detrend_t<T,S,N> (nfreq, nt, &intensity2[0], &weights[0], stride);
+    _kernel_detrend_t<T,S,N> (nfreq, nt, &intensity2[0], istride, &weights[0], wstride);
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	if (well_conditioned[ifreq] && !is_all_positive(&weights[ifreq*stride], nt, 1)) {
+	if (well_conditioned[ifreq] && !is_all_positive(&weights[ifreq*wstride], nt, 1)) {
 	    cerr << "test_detrend_t_idempotency failed(N=" << N << ": well-conditioned weights were incorrectly masked\n";
 	    exit(1);
 	}
 
-	if (!well_conditioned[ifreq] && !is_all_zero(&weights[ifreq*stride], nt, 1)) {
+	if (!well_conditioned[ifreq] && !is_all_zero(&weights[ifreq*wstride], nt, 1)) {
 	    cerr << "test_detrend_t_idempotency failed(N=" << N << ": poorly conditioned weights did not get masked\n";
 	    exit(1);
 	}
@@ -423,15 +428,15 @@ static void test_detrend_t_idempotency(std::mt19937 &rng, int nfreq, int nt, int
 
 
 template<typename T, int S, int N>
-static void test_detrend_f_nulling(std::mt19937 &rng, int nfreq, int nt, int stride)
+static void test_detrend_f_nulling(std::mt19937 &rng, int nfreq, int nt, int istride, int wstride)
 {
-    vector<T> intensity(nfreq * stride, 0.0);
-    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * stride, 0.1, 1.0);
+    vector<T> intensity(nfreq * istride, 0.0);
+    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * wstride, 0.1, 1.0);
 
     for (int it = 0; it < nt; it++)
-	randpoly(&intensity[it], rng, N-1, nfreq, stride);
+	randpoly(&intensity[it], rng, N-1, nfreq, istride);
 
-    _kernel_detrend_f<T,S,N> (nfreq, nt, &intensity[0], &weights[0], stride);
+    _kernel_detrend_f<T,S,N> (nfreq, nt, &intensity[0], istride, &weights[0], wstride);
 
     double epsilon = simd_helpers::maxabs(intensity);
 
@@ -443,12 +448,12 @@ static void test_detrend_f_nulling(std::mt19937 &rng, int nfreq, int nt, int str
 
 
 template<typename T, int S, int N>
-static void test_detrend_f_idempotency(std::mt19937 &rng, int nfreq, int nt, int stride)
+static void test_detrend_f_idempotency(std::mt19937 &rng, int nfreq, int nt, int istride, int wstride)
 {
-    vector<T> intensity = simd_helpers::uniform_randvec<T> (rng, nfreq * stride, 0.0, 1.0);
-    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * stride, 0.1, 1.0);
+    vector<T> intensity = simd_helpers::uniform_randvec<T> (rng, nfreq * istride, 0.0, 1.0);
+    vector<T> weights = simd_helpers::uniform_randvec<T> (rng, nfreq * wstride, 0.1, 1.0);
 
-    _kernel_detrend_f<T,S,N> (nfreq, nt, &intensity[0], &weights[0], stride);
+    _kernel_detrend_f<T,S,N> (nfreq, nt, &intensity[0], istride, &weights[0], wstride);
 
     vector<bool> well_conditioned(nt, true);
 
@@ -464,21 +469,21 @@ static void test_detrend_f_idempotency(std::mt19937 &rng, int nfreq, int nt, int
 	for (int jt = it; jt < it+S; jt++) {
 	    if (all_badly_conditioned || (std::uniform_real_distribution<>()(rng) < 0.5)) {
 		well_conditioned[jt] = false;
-		make_weights_badly_conditioned(&weights[jt], rng, N-1, nfreq, stride);
+		make_weights_badly_conditioned(&weights[jt], rng, N-1, nfreq, wstride);
 	    }
 	}
     }
 
     vector<T> intensity2 = intensity;
-    _kernel_detrend_f<T,S,N> (nfreq, nt, &intensity2[0], &weights[0], stride);
+    _kernel_detrend_f<T,S,N> (nfreq, nt, &intensity2[0], istride, &weights[0], wstride);
 
     for (int it = 0; it < nt; it++) {
-	if (well_conditioned[it] && !is_all_positive(&weights[it], nfreq, stride)) {
+	if (well_conditioned[it] && !is_all_positive(&weights[it], nfreq, wstride)) {
 	    cerr << "test_detrend_f_idempotency failed(N=" << N << "): well-conditioned weights were incorrectly masked\n";
 	    exit(1);
 	}
 
-	if (!well_conditioned[it] && !is_all_zero(&weights[it], nfreq, stride)) {
+	if (!well_conditioned[it] && !is_all_zero(&weights[it], nfreq, wstride)) {
 	    cerr << "test_detrend_f_idempotency failed(N=" << N << "): poorly conditioned weights did not get masked\n";
 	    exit(1);
 	}
@@ -497,40 +502,40 @@ static void test_detrend_f_idempotency(std::mt19937 &rng, int nfreq, int nt, int
 
 
 template<typename T, int S, int N>
-static void test_detrend_transpose(std::mt19937 &rng, int n1, int n2, int stride1, int stride2)
+static void test_detrend_transpose(std::mt19937 &rng, int n1, int n2, int istride1, int wstride1, int istride2, int wstride2)
 {
-    vector<T> intensity12(n1 * stride2, 0.0);
-    vector<T> intensity21(n2 * stride1, 0.0);
+    vector<T> intensity12(n1 * istride2, 0.0);
+    vector<T> intensity21(n2 * istride1, 0.0);
 
-    vector<T> weights12(n1 * stride2, 0.0);
-    vector<T> weights21(n2 * stride1, 0.0);
+    vector<T> weights12(n1 * wstride2, 0.0);
+    vector<T> weights21(n2 * wstride1, 0.0);
 
     std::normal_distribution<> dist;
 
     for (int i = 0; i < n1; i++) {
 	for (int j = 0; j < n2; j++) {
-	    intensity12[i*stride2+j] = intensity21[j*stride1+i] = uniform_rand(rng);
-	    weights12[i*stride2+j] = weights21[j*stride1+i] = uniform_rand(rng, 0.1, 1.0);
+	    intensity12[i*istride2+j] = intensity21[j*istride1+i] = uniform_rand(rng);
+	    weights12[i*wstride2+j] = weights21[j*wstride1+i] = uniform_rand(rng, 0.1, 1.0);
 	}
     }
 
-    _kernel_detrend_t<T,S,N> (n1, n2, &intensity12[0], &weights12[0], stride2);
-    _kernel_detrend_f<T,S,N> (n2, n1, &intensity21[0], &weights21[0], stride1);
+    _kernel_detrend_t<T,S,N> (n1, n2, &intensity12[0], istride2, &weights12[0], wstride2);
+    _kernel_detrend_f<T,S,N> (n2, n1, &intensity21[0], istride1, &weights21[0], wstride1);
 
     T epsilon = 0;
 
     for (int i = 0; i < n1; i++) {
 	for (int j = 0; j < n2; j++) {
-	    T x = intensity12[i*stride2+j];
-	    T y = intensity21[j*stride1+i];
+	    T x = intensity12[i*istride2+j];
+	    T y = intensity21[j*istride1+i];
 	    epsilon = std::max(epsilon, std::fabs(x-y));
 	}
     }
 
     if (epsilon > 1.0e-4) {
 	cerr << "test_detrend_transpose failed: T=" << simd_helpers::type_name<T>() << ", S=" << S
-	     << ", N=" << N << ", n1=" << n1 << ", n2=" << n2 << ", stride1=" << stride1
-	     << ", stride2=" << stride2 << ": epsilon=" << epsilon << endl;
+	     << ", N=" << N << ", n1=" << n1 << ", n2=" << n2 << ", istride1=" << istride1 << ", wstride1=" << wstride1
+	     << ", istride2=" << istride2 << ", wstride2=" << wstride2 << ": epsilon=" << epsilon << endl;
 	exit(1);
     }
 }
@@ -554,22 +559,24 @@ static void run_all_polynomial_detrender_tests(std::mt19937 &rng)
     for (int iter = 0; iter < 10; iter++) {
 	int nfreq = std::uniform_int_distribution<>(10*Nmax,20*Nmax)(rng);
 	int nt = S * std::uniform_int_distribution<>((10*Nmax)/S,(20*Nmax)/S)(rng);
-	int stride = nt + S * std::uniform_int_distribution<>(0,4)(rng);
+	int istride = nt + S * std::uniform_int_distribution<>(0,4)(rng);
+	int wstride = nt + S * std::uniform_int_distribution<>(0,4)(rng);
 
 	test_legpoly_eval<T,S,Nmax> (rng);
 
 	test_detrend_t_pass1<T,S,Nmax> (rng, nt);
 	test_detrend_t_pass2<T,S,Nmax> (rng, nt);
-	test_detrend_t_nulling<T,S,Nmax> (rng, nfreq, nt, stride);
-	test_detrend_t_idempotency<T,S,Nmax> (rng, nfreq, nt, stride);
+	test_detrend_t_nulling<T,S,Nmax> (rng, nfreq, nt, istride, wstride);
+	test_detrend_t_idempotency<T,S,Nmax> (rng, nfreq, nt, istride, wstride);
 
-	test_detrend_f_nulling<T,S,Nmax> (rng, nfreq, nt, stride);
-	test_detrend_f_idempotency<T,S,Nmax> (rng, nfreq, nt, stride);
+	test_detrend_f_nulling<T,S,Nmax> (rng, nfreq, nt, istride, wstride);
+	test_detrend_f_idempotency<T,S,Nmax> (rng, nfreq, nt, istride, wstride);
 
-	// n2, stride2 only used in test_detrend_transpose()
+	// n2, istride2, wstride2 only used in test_detrend_transpose()
 	int n2 = S * std::uniform_int_distribution<>((10*Nmax)/S,(20*Nmax)/S)(rng);
-	int stride2 = n2 + S * std::uniform_int_distribution<>(0,4)(rng);
-	test_detrend_transpose<T,S,Nmax> (rng, nt, n2, stride, stride2);
+	int istride2 = n2 + S * std::uniform_int_distribution<>(0,4)(rng);
+	int wstride2 = n2 + S * std::uniform_int_distribution<>(0,4)(rng);
+	test_detrend_transpose<T,S,Nmax> (rng, nt, n2, istride, wstride, istride2, wstride2);
     }
 }
 

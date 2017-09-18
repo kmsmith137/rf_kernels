@@ -37,8 +37,8 @@ namespace polynomial_detrender_kernel_table {
 }; // pacify emacs c-mode
 #endif
 
-// Usage: kernel(nfreq, nt, intensity, weights, stride, epsilon)
-using kernel_t = void (*)(int, int, float *, float *, int, double);
+// Usage: kernel(nfreq, nt, intensity, istride, weights, wstride, epsilon)
+using kernel_t = void (*)(int, int, float *, int, float *, int, double);
  
 // (axis, polydeg) -> kernel
 static unordered_map<array<int,2>, kernel_t> kernel_table;
@@ -87,7 +87,7 @@ polynomial_detrender::polynomial_detrender(axis_type axis_, int polydeg_) :
 { }
 
 
-void polynomial_detrender::detrend(int nfreq, int nt, float *intensity, float *weights, int stride, double epsilon)
+void polynomial_detrender::detrend(int nfreq, int nt, float *intensity, int istride, float *weights, int wstride, double epsilon)
 {
     if (_unlikely(nfreq <= 0))
 	throw runtime_error("rf_kernels::polynomial_detrender: nfreq=" + to_string(nfreq) + ", positive number expected");
@@ -98,8 +98,11 @@ void polynomial_detrender::detrend(int nfreq, int nt, float *intensity, float *w
     if (_unlikely((nt % Sfid) != 0))
 	throw runtime_error("rf_kernels::polynomial_detrender: nt_chunk=" + to_string(nt) + " must be a multiple of " + to_string(Sfid));
     
-    if (_unlikely(abs(stride) < nt))
-	throw runtime_error("rf_kernels::polynomial_detrender: stride=" + to_string(stride) + " is too small");
+    if (_unlikely(abs(istride) < nt))
+	throw runtime_error("rf_kernels::polynomial_detrender: istride=" + to_string(istride) + " is too small");
+    
+    if (_unlikely(abs(wstride) < nt))
+	throw runtime_error("rf_kernels::polynomial_detrender: wstride=" + to_string(wstride) + " is too small");
 
     if (_unlikely(epsilon <= 0.0))
 	throw runtime_error("rf_kernels::polynomial_detrender: epsilon=" + to_string(epsilon) + ", positive number expected");
@@ -107,7 +110,7 @@ void polynomial_detrender::detrend(int nfreq, int nt, float *intensity, float *w
     if (_unlikely(!intensity || !weights))
 	throw runtime_error("rf_kernels::polynomial_detrender: null pointer passed to detrend()");
 
-    this->_f(nfreq, nt, intensity, weights, stride, epsilon);
+    this->_f(nfreq, nt, intensity, istride, weights, wstride, epsilon);
 }
 
 
