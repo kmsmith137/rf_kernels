@@ -35,7 +35,7 @@ struct polynomial_detrender_timing_thread : public kernel_timing_thread {
 		this->start_timer();
 
 		for (int iter = 0; iter < niter; iter++)
-		    pd.detrend(nfreq, nt_chunk, intensity, weights, stride, 1.0e-2);
+		    pd.detrend(nfreq, nt_chunk, intensity, stride, weights, stride, 1.0e-2);
 
 		this->stop_timer2(cp);
 	    }
