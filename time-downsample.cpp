@@ -36,7 +36,7 @@ struct downsample_timing_thread : public kernel_timing_thread {
 		this->start_timer();
 
 		for (int iter = 0; iter < niter; iter++)
-		    ds.downsample(nfreq_ds, nt_ds, intensity_ds, weights_ds, stride, intensity, weights, stride);
+		    ds.downsample(nfreq_ds, nt_ds, intensity_ds, stride, weights_ds, stride, intensity, stride, weights, stride);
 
 		this->stop_timer2(cp);
 

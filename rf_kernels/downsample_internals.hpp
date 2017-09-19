@@ -21,24 +21,24 @@ template<typename T, int S, int D> using simd_downsampler = simd_helpers::simd_d
 
 // -------------------------------------------------------------------------------------------------
 //
-// _sum_strided<Df> (wi_acc, w_acc, intensity, weights, stride)
-// _sum_strided<Df> (wi_acc, w_acc, intensity, weights, stride, N)
+// _sum_strided<Df> (wi_acc, w_acc, intensity, istride, weights, wstride)
+// _sum_strided<Df> (wi_acc, w_acc, intensity, istride, weights, wstride, N)
 //
 // Sums over a shape-(Df,S) array.
 // No downsampling kernels are used -- the sum is purely "vertical".
 
 
 template<int Df, typename T, int S, typename std::enable_if<(Df==0),int>::type = 0>
-inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
+inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, int istride, const T *in_w, int wstride)
 { }
 
 template<int Df, typename T, int S, typename std::enable_if<(Df>0),int>::type = 0>
-inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, const T *in_w, int stride)
+inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i, int istride, const T *in_w, int wstride)
 {
-    _sum_strided<Df-1> (wi_acc, w_acc, in_i, in_w, stride);
+    _sum_strided<Df-1> (wi_acc, w_acc, in_i, istride, in_w, wstride);
     
-    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (in_i + (Df-1)*stride);
-    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (in_w + (Df-1)*stride);
+    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (in_i + (Df-1)*istride);
+    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (in_w + (Df-1)*wstride);
 
     wi_acc += wval * ival;
     w_acc += wval;
@@ -50,7 +50,7 @@ inline void _sum_strided(simd_t<T,S> &wi_acc, simd_t<T,S> &w_acc, const T *in_i,
 // _wi_downsampler_0d<T, S, Df0, DtX> ds0(Dt);
 //
 // simd_t<T,S> wi_out, w_out;
-// ds0.get(wi_out, w_out, i_in, w_in, stride);
+// ds0.get(wi_out, w_out, i_in, istride, w_in, wstride);
 //
 // We use the notation Df0 here to emphasize that in a higher-dimensional context, Df may not be equal to Df0!
 
@@ -72,27 +72,27 @@ struct _wi_downsampler_0d<T, S, Df0, Dt, false>
     constexpr int get_Dt() const { return Dt; }
 
     template<int P, typename std::enable_if<(P==0),int>::type = 0>
-    inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride) const
+    inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, int istride, const T *in_w, int wstride) const
     { }
 
     template<int P, typename std::enable_if<(P>0),int>::type = 0>
-    inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, const T *in_w, int stride) const
+    inline void _get_partial(simd_downsampler<T,S,Dt> &wi_ds, simd_downsampler<T,S,Dt> &w_ds, const T *in_i, int istride, const T *in_w, int wstride) const
     {
-	_get_partial<P-1> (wi_ds, w_ds, in_i, in_w, stride);
+	_get_partial<P-1> (wi_ds, w_ds, in_i, istride, in_w, wstride);
 	
 	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
 	simd_t<T,S> w_acc = simd_t<T,S>::zero();
-	_sum_strided<Df0> (wi_acc, w_acc, in_i + (P-1)*S, in_w + (P-1)*S, stride);
+	_sum_strided<Df0> (wi_acc, w_acc, in_i + (P-1)*S, istride, in_w + (P-1)*S, wstride);
 	
 	wi_ds.template put<P-1> (wi_acc);
 	w_ds.template put<P-1> (w_acc);
     }
 
     
-    inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride) const
+    inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, int istride, const T *w_in, int wstride) const
     {
 	simd_downsampler<T,S,Dt> wi_ds, w_ds;
-	_get_partial<Dt> (wi_ds, w_ds, i_in, w_in, stride);
+	_get_partial<Dt> (wi_ds, w_ds, i_in, istride, w_in, wstride);
 
 	wi_out += wi_ds.get();
 	w_out += w_ds.get();
@@ -117,29 +117,29 @@ struct _wi_downsampler_0d<T, S, Df0, DtX, true>
 
     
     template<int P, typename std::enable_if<(P==0),int>::type = 0>
-    inline void _get_partial(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride) const
+    inline void _get_partial(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, int istride, const T *in_w, int wstride) const
     { }
     
     template<int P, typename std::enable_if<(P>0),int>::type = 0>
-    inline void _get_partial(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, const T *in_w, int stride) const
+    inline void _get_partial(simd_downsampler<T,S,S> &wi_ds, simd_downsampler<T,S,S> &w_ds, const T *in_i, int istride, const T *in_w, int wstride) const
     {
-	_get_partial<P-1> (wi_ds, w_ds, in_i, in_w, stride);
+	_get_partial<P-1> (wi_ds, w_ds, in_i, istride, in_w, wstride);
 	
 	simd_t<T,S> wi_acc = simd_t<T,S>::zero();
 	simd_t<T,S> w_acc = simd_t<T,S>::zero();
 	
 	for (int it = 0; it < Dt; it += S)
-	    _sum_strided<Df0> (wi_acc, w_acc, in_i+(P-1)*Dt+it, in_w+(P-1)*Dt+it, stride);
+	    _sum_strided<Df0> (wi_acc, w_acc, in_i+(P-1)*Dt+it, istride, in_w+(P-1)*Dt+it, wstride);
 	
 	wi_ds.template put<P-1> (wi_acc);
 	w_ds.template put<P-1> (w_acc);    
     }
 
     
-    inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, const T *w_in, int stride) const
+    inline void get(simd_t<T,S> &wi_out, simd_t<T,S> &w_out, const T *i_in, int istride, const T *w_in, int wstride) const
     {
 	simd_downsampler<T,S,S> wi_ds, w_ds;
-	_get_partial<S> (wi_ds, w_ds, i_in, w_in, stride);
+	_get_partial<S> (wi_ds, w_ds, i_in, istride, w_in, wstride);
 	
 	wi_out += wi_ds.get();
 	w_out += w_ds.get();
@@ -150,7 +150,7 @@ struct _wi_downsampler_0d<T, S, Df0, DtX, true>
 // -------------------------------------------------------------------------------------------------
 //
 // _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
-// ds1.downsample_1d(out, nt_out, in_i, in_w, stride);
+// ds1.downsample_1d(out, nt_out, in_i, istride, in_w, wstride);
 
 
 template<typename T, int S, int Df, int Dt, bool Df_Large = (Df > S)>
@@ -171,7 +171,7 @@ struct _wi_downsampler_1d<T, S, Df, DtX, false>
     }
 
     template<typename Tacc>
-    inline void downsample_1d(Tacc &acc, int nt_out, int istride, const T *i_in, const T *w_in, T *i_out, T *w_out)
+    inline void downsample_1d(Tacc &acc, int nt_out, const T *i_in, int istride, const T *w_in, int wstride, T *i_out, T *w_out)
     {
 	const int Dt = ds0.get_Dt();
 	const simd_t<T,S> zero = 0;
@@ -180,7 +180,7 @@ struct _wi_downsampler_1d<T, S, Df, DtX, false>
 	for (int it = 0; it < nt_out; it += S) {
 	    simd_t<T,S> wival = simd_t<T,S>::zero();
 	    simd_t<T,S> wval = simd_t<T,S>::zero();
-	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	    ds0.get(wival, wval, i_in + it*Dt, istride, w_in + it*Dt, wstride);
 	    
 	    // FIXME revisit after smask cleanup.
 	    simd_t<T,S> ival = wival / blendv(wval.compare_gt(zero), wval, one);
@@ -209,7 +209,7 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
     }
 
     template<typename Tacc>
-    inline void downsample_1d(Tacc &acc, int nt_out, int istride, const T *i_in, const T *w_in, T *i_out, T *w_out)
+    inline void downsample_1d(Tacc &acc, int nt_out, const T *i_in, int in_istride, const T *w_in, int in_wstride, T *i_out, T *w_out)
     {
 	const int Dt = ds0.get_Dt();
 	const simd_t<T,S> zero = 0;
@@ -222,35 +222,35 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 	for (int it = 0; it < nt_out; it += S) {
 	    wival = simd_t<T,S>::zero();
 	    wval = simd_t<T,S>::zero();
-	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	    ds0.get(wival, wval, i_in + it*Dt, in_istride, w_in + it*Dt, in_wstride);
 	    
 	    wival.storeu(i_out + it);
 	    wval.storeu(w_out + it);
 	}
 
-	i_in += S*istride;
-	w_in += S*istride;
+	i_in += S * in_istride;
+	w_in += S * in_wstride;
 	
 	// Middle passes
 	for (int i = S; i < (Df-S); i += S) {
 	    for (int it = 0; it < nt_out; it += S) {
 		wival.loadu(i_out + it);
 		wval.loadu(w_out + it);		
-		ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+		ds0.get(wival, wval, i_in + it*Dt, in_istride, w_in + it*Dt, in_wstride);
 		
 		wival.storeu(i_out + it);
 		wval.storeu(w_out + it);
 	    }
 	    
-	    i_in += S*istride;
-	    w_in += S*istride;
+	    i_in += S * in_istride;
+	    w_in += S * in_wstride;
 	}
 
 	// Last pass
 	for (int it = 0; it < nt_out; it += S) {
 	    wival.loadu(i_out + it);
 	    wval.loadu(w_out + it);
-	    ds0.get(wival, wval, i_in + it*Dt, w_in + it*Dt, istride);
+	    ds0.get(wival, wval, i_in + it*Dt, in_istride, w_in + it*Dt, in_wstride);
 	    
 	    // FIXME revisit after smask cleanup.
 	    simd_t<T,S> ival = wival / blendv(wval.compare_gt(zero), wval, one);
@@ -266,7 +266,7 @@ struct _wi_downsampler_1d<T, S, DfX, DtX, true>
 // -------------------------------------------------------------------------------------------------
 //
 // _wi_downsampler_0f<T, S, DfX, DtX> ds1(Df, Dt);
-// ds1.downsample_0f(out, nfreq, i_in, w_in, stride);
+// ds1.downsample_0f(out, nfreq, i_in, istride, w_in, wstride);
 //
 // where 'out' is a class which defines
 //   out.put(wival, wval, ifreq_ds)
@@ -379,18 +379,18 @@ struct _wi_downsampler_0f<T, S, Df, DtX, false>
     
 
     template<int P, int D, typename std::enable_if<(P==0),int>::type = 0>
-    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, int istride, const T *w_in, int wstride)
     { }
 
     template<int P, int D, typename std::enable_if<(P>0),int>::type = 0>
-    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, int istride, const T *w_in, int wstride)
     {
-	_accumulate_rows<P-1> (wi_acc, w_acc, i_in, w_in, stride);
-	_ds.accumulate_row(wi_acc, w_acc, i_in + (P-1)*stride, w_in + (P-1)*stride);
+	_accumulate_rows<P-1> (wi_acc, w_acc, i_in, istride, w_in, wstride);
+	_ds.accumulate_row(wi_acc, w_acc, i_in + (P-1)*istride, w_in + (P-1)*wstride);
     }
 
 
-    inline void get(simd_t<T,S> &wival, simd_t<T,S> &wval, const T *i_in, const T *w_in, int stride)
+    inline void get(simd_t<T,S> &wival, simd_t<T,S> &wval, const T *i_in, int istride, const T *w_in, int wstride)
     {
 	constexpr int D = decltype(_ds)::D;
 
@@ -398,7 +398,7 @@ struct _wi_downsampler_0f<T, S, Df, DtX, false>
 	wi_acc.setzero();
 	w_acc.setzero();
 
-	_accumulate_rows<Df> (wi_acc, w_acc, i_in, w_in, stride);
+	_accumulate_rows<Df> (wi_acc, w_acc, i_in, istride, w_in, wstride);
 
 	wival = simd_downsample(wi_acc);
 	wval = simd_downsample(w_acc);
@@ -426,18 +426,18 @@ struct _wi_downsampler_0f<T, S, DfX, DtX, true>
 
     
     template<int P, int D, typename std::enable_if<(P==0),int>::type = 0>
-    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, int istride, const T *w_in, int wstride)
     { }
 
     template<int P, int D, typename std::enable_if<(P>0),int>::type = 0>
-    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, const T *w_in, int stride)
+    inline void _accumulate_rows(simd_ntuple<T,S,D> &wi_acc, simd_ntuple<T,S,D> &w_acc, const T *i_in, int istride, const T *w_in, int wstride)
     {
-	_accumulate_rows<P-1> (wi_acc, w_acc, i_in, w_in, stride);
-	_ds.accumulate_row(wi_acc, w_acc, i_in + (P-1)*stride, w_in + (P-1)*stride);
+	_accumulate_rows<P-1> (wi_acc, w_acc, i_in, istride, w_in, wstride);
+	_ds.accumulate_row(wi_acc, w_acc, i_in + (P-1)*istride, w_in + (P-1)*wstride);
     }
 
     
-    inline void get(simd_t<T,S> &wival, simd_t<T,S> &wval, const T *i_in, const T *w_in, int stride)
+    inline void get(simd_t<T,S> &wival, simd_t<T,S> &wval, const T *i_in, int istride, const T *w_in, int wstride)
     {
 	constexpr int D = decltype(_ds)::D;
 
@@ -446,7 +446,7 @@ struct _wi_downsampler_0f<T, S, DfX, DtX, true>
 	w_acc.setzero();
 
 	for (int i = 0; i < Df; i += S)
-	    _accumulate_rows<S> (wi_acc, w_acc, i_in + i*stride, w_in + i*stride, stride);
+	    _accumulate_rows<S> (wi_acc, w_acc, i_in + i*istride, istride, w_in + i*wstride, wstride);
 
 	wival = simd_downsample(wi_acc);
 	wval = simd_downsample(w_acc);
@@ -468,7 +468,7 @@ struct _wi_downsampler_1f {
 
 
     template<typename Tacc>
-    inline void downsample_1f(Tacc &acc, int nfreq_ds, int istride, const T *i_in, const T *w_in, T *i_out, T *w_out)
+    inline void downsample_1f(Tacc &acc, int nfreq_ds, const T *i_in, int in_istride, const T *w_in, int in_wstride, T *i_out, T *w_out)
     {
 	const int Df = ds0.get_Df();
 	const simd_t<T,S> zero = 0;
@@ -476,7 +476,10 @@ struct _wi_downsampler_1f {
 
 	for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	    simd_t<T,S> wival, wval;
-	    ds0.get(wival, wval, i_in + ifreq_ds*Df*istride, w_in + ifreq_ds*Df*istride, istride);
+	    
+	    ds0.get(wival, wval,
+		    i_in + ifreq_ds*Df*in_istride, in_istride,
+		    w_in + ifreq_ds*Df*in_wstride, in_wstride);
 	    
 	    // FIXME revisit after smask cleanup.
 	    simd_t<T,S> ival = wival / blendv(wval.compare_gt(zero), wval, one);
@@ -500,7 +503,8 @@ struct _dummy_wi_ds_accumulator
 
 
 template<typename T, int S, int DfX, int DtX, typename std::enable_if<((DfX > 1) || (DtX > 1)),int>::type = 0>
-inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride)
+inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt_out, T *out_i, int out_istride,
+				 T *out_w, int out_wstride, const T *in_i, int in_istride, const T *in_w, int in_wstride)
 {
     const int Df = dp->Df;
     const int Dt = dp->Dt;
@@ -509,24 +513,25 @@ inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt
     _wi_downsampler_1d<T, S, DfX, DtX> ds1(Df, Dt);
     
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++) {
-	ds1.downsample_1d(acc, nt_out, istride,
-			  in_i + ifreq * Df * istride,
-			  in_w + ifreq * Df * istride,
-			  out_i + ifreq * ostride,
-			  out_w + ifreq * ostride);
+	ds1.downsample_1d(acc, nt_out,
+			  in_i + ifreq * Df * in_istride, in_istride,
+			  in_w + ifreq * Df * in_wstride, in_wstride,
+			  out_i + ifreq * out_istride,
+			  out_w + ifreq * out_wstride);
     }
 }
 
 
 // Special case (Df,Dt)=(1,1).
 template<typename T, int S, int DfX, int DtX, typename std::enable_if<((DfX == 1) && (DtX == 1)),int>::type = 0>
-inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt_out, T *out_i, T *out_w, int ostride, const T *in_i, const T *in_w, int istride)
+inline void kernel_wi_downsample(const wi_downsampler *dp, int nfreq_out, int nt_out, T *out_i, int out_istride,
+				 T *out_w, int out_wstride, const T *in_i, int in_istride, const T *in_w, int in_wstride)
 {
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++)
-	memcpy(out_i + ifreq*ostride, in_i + ifreq*istride, nt_out * sizeof(T));
+	memcpy(out_i + ifreq*out_istride, in_i + ifreq*in_istride, nt_out * sizeof(T));
     
     for (int ifreq = 0; ifreq < nfreq_out; ifreq++)
-	memcpy(out_w + ifreq*ostride, in_w + ifreq*istride, nt_out * sizeof(T));
+	memcpy(out_w + ifreq*out_wstride, in_w + ifreq*in_wstride, nt_out * sizeof(T));
 }
 
 

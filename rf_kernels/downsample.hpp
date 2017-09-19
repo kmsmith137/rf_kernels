@@ -17,12 +17,14 @@ struct wi_downsampler {
 
     wi_downsampler(int Df, int Dt);
 
-    // Note: stride currently assumed to be the same for intensity, weights.
-    void downsample(int nfreq_out, int nt_out, float *out_i, float *out_w,
-		    int ostride, const float *in_i, const float *in_w, int istride);
+    void downsample(int nfreq_out, int nt_out,
+		    float *out_i, int out_istride,
+		    float *out_w, int out_wstride,
+		    const float *in_i, int in_istride,
+		    const float *in_w, int in_wstride);
     
-    // Function pointer to low-level kernel
-    void (*_f)(const wi_downsampler *, int, int, float *, float *, int, const float *, const float *, int);
+    // Function pointer to low-level kernel.
+    void (*_f)(const wi_downsampler *, int, int, float *, int, float *, int, const float *, int, const float *, int);
 };
 
 

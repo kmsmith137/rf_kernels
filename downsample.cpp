@@ -15,8 +15,8 @@ namespace rf_kernels {
 
 
 struct downsampling_kernel_table {
-    // Usage: kernel(ds, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride)
-    using kernel_t = void (*)(const wi_downsampler *, int, int, float *, float *, int, const float *, const float *, int);
+    // Usage: kernel(ds, nfreq_out, nt_out, out_i, out_istride, out_w, out_wstride, in_i, in_istride, in_w, in_wstride)
+    using kernel_t = void (*)(const wi_downsampler *, int, int, float *, int, float *, int, const float *, int, const float *, int);
 
     unordered_map<array<int,2>, kernel_t> kernel_table;   // (Df,Dt) -> kernel
 
@@ -80,7 +80,11 @@ wi_downsampler::wi_downsampler(int Df_, int Dt_) :
 { }
     
 
-void wi_downsampler::downsample(int nfreq_out, int nt_out, float *out_i, float *out_w, int ostride, const float *in_i, const float *in_w, int istride)
+void wi_downsampler::downsample(int nfreq_out, int nt_out,
+				float *out_i, int out_istride,
+				float *out_w, int out_wstride,
+				const float *in_i, int in_istride,
+				const float *in_w, int in_wstride)
 {
     if (_unlikely(nfreq_out <= 0))
 	throw runtime_error("rf_kernels::wi_downsampler: expected nfreq_out > 0");
@@ -91,16 +95,22 @@ void wi_downsampler::downsample(int nfreq_out, int nt_out, float *out_i, float *
     if (_unlikely(nt_out % 8))
 	throw runtime_error("rf_kernels::wi_downsampler: expected nt_out divisible by 8");
 
-    if (_unlikely(abs(istride) < Dt * nt_out))
-	throw runtime_error("rf_kernels::wi_downsampler: istride is too small");
+    if (_unlikely(abs(in_istride) < Dt * nt_out))
+	throw runtime_error("rf_kernels::wi_downsampler: in_istride is too small");
+    
+    if (_unlikely(abs(in_wstride) < Dt * nt_out))
+	throw runtime_error("rf_kernels::wi_downsampler: in_wstride is too small");
 
-    if (_unlikely(abs(ostride) < nt_out))
-	throw runtime_error("rf_kernels::wi_downsampler: ostride is too small");
+    if (_unlikely(abs(out_istride) < nt_out))
+	throw runtime_error("rf_kernels::wi_downsampler: out_istride is too small");
+    
+    if (_unlikely(abs(out_wstride) < nt_out))
+	throw runtime_error("rf_kernels::wi_downsampler: out_wstride is too small");
     
     if (_unlikely(!out_i || !out_w || !in_i || !in_w))
 	throw runtime_error("rf_kernels: null pointer passed to wi_downsampler::downsample()");
 
-    this->_f(this, nfreq_out, nt_out, out_i, out_w, ostride, in_i, in_w, istride);
+    this->_f(this, nfreq_out, nt_out, out_i, out_istride, out_w, out_wstride, in_i, in_istride, in_w, in_wstride);
 }
 
 
