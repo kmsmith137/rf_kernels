@@ -10,6 +10,7 @@
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/downsample.hpp"
 #include "rf_kernels/intensity_clipper.hpp"
+#include "rf_kernels/mean_rms.hpp"
 #include "rf_kernels/online_mask_filler.hpp"
 #include "rf_kernels/polynomial_detrender.hpp"
 #include "rf_kernels/spline_detrender.hpp"
