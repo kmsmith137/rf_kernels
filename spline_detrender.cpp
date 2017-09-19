@@ -78,7 +78,7 @@ spline_detrender::~spline_detrender()
 }
 
 
-void spline_detrender::detrend(int nt_chunk, int stride, float *intensity, const float *weights)
+void spline_detrender::detrend(int nt_chunk, float *intensity, int istride, const float *weights, int wstride)
 {
     if (nt_chunk <= 0)
 	throw runtime_error("rf_kernels::spline_detrender: nt_chunk must be > 0");
@@ -86,15 +86,17 @@ void spline_detrender::detrend(int nt_chunk, int stride, float *intensity, const
 	throw runtime_error("rf_kernels::spline_detrender: nt_chunk must be divisible by 8");
     if (!intensity || !weights)
 	throw runtime_error("rf_kernels: null pointer passed to spline_detrender::detrend()");
-    if (abs(stride) < nt_chunk)
-	throw runtime_error("rf_kernels::spline_detrender: expected abs(stride) >= nt_chunk");
+    if (abs(istride) < nt_chunk)
+	throw runtime_error("rf_kernels::spline_detrender: expected abs(istride) >= nt_chunk");
+    if (abs(wstride) < nt_chunk)
+	throw runtime_error("rf_kernels::spline_detrender: expected abs(wstride) >= nt_chunk");
 
     for (int it = 0; it < nt_chunk; it += 8) {
-	_kernel_ninv(stride, intensity + it, weights + it);
+	_kernel_ninv(intensity + it, istride, weights + it, wstride);
 	_kernel_fit_pass1();
 	_kernel_fit_pass2();
 	_kernel_fit_pass3();
-	_kernel_detrend(stride, intensity + it);
+	_kernel_detrend(intensity + it, istride);
     }
 }
 

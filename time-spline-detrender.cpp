@@ -23,7 +23,7 @@ struct spline_detrender_timing_thread : public kernel_timing_thread {
 	this->start_timer();
 
 	for (int iter = 0; iter < niter; iter++)
-	    sd.detrend(nt_chunk, stride, intensity, weights);
+	    sd.detrend(nt_chunk, intensity, stride, weights, stride);
 
 	this->stop_timer2("spline_detrender");
     }

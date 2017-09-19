@@ -516,7 +516,7 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	}
     }
 
-    fast_sd._kernel_ninv(stride, fast_intensity, fast_weights);
+    fast_sd._kernel_ninv(fast_intensity, stride, fast_weights, stride);
 
     for (int s = 0; s < 8; s++) {
 	for (int b = 0; b < nbins; b++) {
@@ -570,7 +570,7 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	    _compare("coeff", ref_coeffs[i], fast_sd.coeffs[8*i+s], 3.0e-3);
     }
 
-    fast_sd._kernel_detrend(stride, fast_intensity);
+    fast_sd._kernel_detrend(fast_intensity, stride);
 
     float maxdiff = 0.0;
     float wrmsdiff_num = 0.0;
@@ -652,7 +652,7 @@ static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_
 	}
     }
 
-    sd.detrend(nt_chunk, stride, intensity, weights);
+    sd.detrend(nt_chunk, intensity, stride, weights, stride);
 
     float max_wrms = 0.0;
 

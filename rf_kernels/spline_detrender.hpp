@@ -29,7 +29,7 @@ struct spline_detrender {
     spline_detrender(int nfreq, int nbins, float epsilon=3.0e-4);
     ~spline_detrender();
 
-    void detrend(int nt_chunk, int stride, float *intensity, const float *weights);
+    void detrend(int nt_chunk, float *intensity, int istride, const float *weights, int wstride);
 
     int *bin_delim = nullptr;           // length (nbins+1)
     float *poly_vals = nullptr;         // length (nfreq * 4)
@@ -42,8 +42,8 @@ struct spline_detrender {
     uint8_t *allocated_memory = nullptr;
 
     // Defined in rf_pipelines/spline_detrender_internal.hpp
-    inline void _kernel_ninv(int stride, const float *intensity, const float *weights);
-    inline void _kernel_detrend(int stride, float *intensity);
+    inline void _kernel_ninv(const float *intensity, int istride, const float *weights, int wstride);
+    inline void _kernel_detrend(float *intensity, int istride);
     inline void _kernel_fit_pass1();
     inline void _kernel_fit_pass2();
     inline void _kernel_fit_pass3();

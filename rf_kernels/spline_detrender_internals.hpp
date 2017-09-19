@@ -13,7 +13,7 @@ namespace rf_kernels {
 #endif
 
 
-inline void spline_detrender::_kernel_ninv(int stride, const float *intensity, const float *weights)
+inline void spline_detrender::_kernel_ninv(const float *intensity, int istride, const float *weights, int wstride)
 {
     float *out_ninv = ninv;
     float *out_ninvx = ninvx;
@@ -38,8 +38,8 @@ inline void spline_detrender::_kernel_ninv(int stride, const float *intensity, c
 	pp = _mm256_load_ps(poly_vals + 4 * (ifreq0 & ~1));
 	
 	for (int ifreq = ifreq0; ifreq < ifreq1; ifreq++) {
-	    __m256 w = _mm256_loadu_ps(weights + ifreq*stride);
-	    __m256 wi = _mm256_loadu_ps(intensity + ifreq*stride);
+	    __m256 w = _mm256_loadu_ps(weights + ifreq*wstride);
+	    __m256 wi = _mm256_loadu_ps(intensity + ifreq*istride);
 	    wi *= w;
 	    
 	    // This branch inside the loop can be removed, by hand-unrolling the loop
@@ -91,7 +91,7 @@ inline void spline_detrender::_kernel_ninv(int stride, const float *intensity, c
 	pp = _mm256_load_ps(poly_vals + 4 * (ifreq0 & ~1));
 	
 	for (int ifreq = ifreq0; ifreq < ifreq1; ifreq++) {
-	    __m256 w = _mm256_loadu_ps(weights + ifreq*stride);
+	    __m256 w = _mm256_loadu_ps(weights + ifreq*wstride);
 	    
 	    if (ifreq & 1)
 		p = _mm256_permute2f128_ps(pp, pp, 0x11);
@@ -305,7 +305,7 @@ inline void spline_detrender::_kernel_fit_pass3()
 }
 
 
-inline void spline_detrender::_kernel_detrend(int stride, float *intensity)
+inline void spline_detrender::_kernel_detrend(float *intensity, int istride)
 {
     __m256 c0, c1;
     __m256 c2 = _mm256_loadu_ps(coeffs);
@@ -324,7 +324,7 @@ inline void spline_detrender::_kernel_detrend(int stride, float *intensity)
 	__m256 p;
 	
 	for (int ifreq = ifreq0; ifreq < ifreq1; ifreq++) {
-	    __m256 ival = _mm256_loadu_ps(intensity + ifreq*stride);
+	    __m256 ival = _mm256_loadu_ps(intensity + ifreq*istride);
 
 	    if (ifreq & 1)
 		p = _mm256_permute2f128_ps(pp, pp, 0x11);
@@ -340,7 +340,7 @@ inline void spline_detrender::_kernel_detrend(int stride, float *intensity)
 
 	    ival -= (c0*p0 + c1*p1 + c2*p2 + c3*p3);
 
-	    _mm256_storeu_ps(intensity + ifreq*stride, ival);
+	    _mm256_storeu_ps(intensity + ifreq*istride, ival);
 	}
     }	
 }
