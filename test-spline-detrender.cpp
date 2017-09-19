@@ -493,7 +493,7 @@ inline void _compare(const char *str, float x_ref, float x_fast, float epsilon)
 }
 
 
-static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int stride, float epsilon_reg)
+static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int istride, int wstride, float epsilon_reg)
 {
     spline_detrender fast_sd(nfreq, nbins, epsilon_reg);
     reference_spline_detrender ref_sd(nfreq, nbins);
@@ -506,17 +506,17 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	ref_sd.make_sparse_weights(rng, &ref_weights[s*nfreq]);
 #endif
 
-    float *fast_intensity = aligned_alloc<float> (nfreq * stride);
-    float *fast_weights = aligned_alloc<float> (nfreq * stride);
+    float *fast_intensity = aligned_alloc<float> (nfreq * istride);
+    float *fast_weights = aligned_alloc<float> (nfreq * wstride);
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int s = 0; s < 8; s++) {
-	    fast_intensity[ifreq*stride + s] = ref_intensity[s*nfreq + ifreq];
-	    fast_weights[ifreq*stride + s] = ref_weights[s*nfreq + ifreq];
+	    fast_intensity[ifreq*istride + s] = ref_intensity[s*nfreq + ifreq];
+	    fast_weights[ifreq*wstride + s] = ref_weights[s*nfreq + ifreq];
 	}
     }
 
-    fast_sd._kernel_ninv(fast_intensity, stride, fast_weights, stride);
+    fast_sd._kernel_ninv(fast_intensity, istride, fast_weights, wstride);
 
     for (int s = 0; s < 8; s++) {
 	for (int b = 0; b < nbins; b++) {
@@ -570,7 +570,7 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	    _compare("coeff", ref_coeffs[i], fast_sd.coeffs[8*i+s], 3.0e-3);
     }
 
-    fast_sd._kernel_detrend(fast_intensity, stride);
+    fast_sd._kernel_detrend(fast_intensity, istride);
 
     float maxdiff = 0.0;
     float wrmsdiff_num = 0.0;
@@ -582,7 +582,7 @@ static void test_fast_kernels(std::mt19937 &rng, int nfreq, int nbins, int strid
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    float w = ref_weights[s*nfreq+ifreq];
 	    float i_ref = ref_intensity[s*nfreq+ifreq];
-	    float i_fast = fast_intensity[ifreq*stride+s];
+	    float i_fast = fast_intensity[ifreq*istride+s];
 
 	    maxdiff = max(maxdiff, abs(i_ref-i_fast));
 	    wrmsdiff_num += w * (i_ref-i_fast) * (i_ref-i_fast);
@@ -612,10 +612,11 @@ static void test_fast_kernels(std::mt19937 &rng)
 	// Number of bins is chosen in a way which tests both low-nbins and high-nbins cases.
 	int nbins = randint(rng,0,2) ? randint(rng,1,100) : randint(rng,1,8);
 	int nfreq = randint(rng, 64*nbins, 128*nbins);
-	int stride = 8 * randint(rng, 1, 5);
+	int istride = 8 * randint(rng, 1, 5);
+	int wstride = 8 * randint(rng, 1, 5);
 	float epsilon_reg = exp(uniform_rand(rng, log(1.0e-3), 0.0));
 
-	test_fast_kernels(rng, nfreq, nbins, stride, epsilon_reg);
+	test_fast_kernels(rng, nfreq, nbins, istride, wstride, epsilon_reg);
     }
 
     cout << "test_fast_kernels: pass" << endl;
@@ -627,10 +628,10 @@ static void test_fast_kernels(std::mt19937 &rng)
 // Final, self-contained test of the fast spline_detrender.
 
 
-static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_chunk, int stride)
+static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_chunk, int istride, int wstride)
 {
-    float *intensity = aligned_alloc<float> (nfreq * stride);
-    float *weights = aligned_alloc<float> (nfreq * stride);
+    float *intensity = aligned_alloc<float> (nfreq * istride);
+    float *weights = aligned_alloc<float> (nfreq * wstride);
 
     spline_detrender sd(nfreq, nbins, 1.0e-4);        // epsilon_reg = 10^(-4)
     reference_spline_detrender ref_sd(nfreq, nbins);  // for eval_model()
@@ -647,12 +648,12 @@ static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_
 	ref_sd.make_sparse_weights(rng, &tmp_w[0]);
     
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    intensity[ifreq*stride + it] = tmp_i[ifreq];
-	    weights[ifreq*stride + it] = tmp_w[ifreq];
+	    intensity[ifreq*istride + it] = tmp_i[ifreq];
+	    weights[ifreq*wstride + it] = tmp_w[ifreq];
 	}
     }
 
-    sd.detrend(nt_chunk, intensity, stride, weights, stride);
+    sd.detrend(nt_chunk, intensity, istride, weights, wstride);
 
     float max_wrms = 0.0;
 
@@ -661,8 +662,8 @@ static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_
 	float wrms_den = 0.0;
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    float w = weights[ifreq*stride + it];
-	    float i = intensity[ifreq*stride + it];
+	    float w = weights[ifreq*wstride + it];
+	    float i = intensity[ifreq*istride + it];
 
 	    wrms_num += w*i*i;
 	    wrms_den += w;
@@ -676,7 +677,8 @@ static void test_fast_detrender(std::mt19937 &rng, int nbins, int nfreq, int nt_
 
     if (max_wrms > 0.02) {
 	cout << "test_fast_detrender() failed: nbins=" << nbins << ", nfreq=" << nfreq
-	     << ", " << nt_chunk << ", " << stride << ", max_wrms=" << max_wrms << endl;
+	     << ", nt_chunk=" << nt_chunk << ", istride=" << istride << ", wstride=" << wstride
+	     << ", max_wrms=" << max_wrms << endl;
 	exit(1);	
     }
 
@@ -691,9 +693,10 @@ static void test_fast_detrender(std::mt19937 &rng)
 	int nbins = randint(rng, 1, 10);
 	int nfreq = randint(rng, 64*nbins, 128*nbins);
 	int nt_chunk = 8 * randint(rng, 1, 64);
-	int stride = 8 * randint(rng, nt_chunk/8, nt_chunk/4);
+	int istride = 8 * randint(rng, nt_chunk/8, nt_chunk/4);
+	int wstride = 8 * randint(rng, nt_chunk/8, nt_chunk/4);
 
-	test_fast_detrender(rng, nbins, nfreq, nt_chunk, stride);
+	test_fast_detrender(rng, nbins, nfreq, nt_chunk, istride, wstride);
     }
 
     cout << "test_fast_detrender: pass" << endl;
