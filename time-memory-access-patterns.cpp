@@ -4,6 +4,7 @@
 
 #include <simd_helpers/simd_float32.hpp>
 #include <simd_helpers/simd_ntuple.hpp>
+#include <simd_helpers/downsample.hpp>
 
 #ifdef __AVX__
 constexpr int S = 8;
@@ -188,6 +189,52 @@ void mock_fclip_tmp(int niter, int nfreq, int nt_chunk, int stride, const float 
 }
 
 
+// -------------------------------------------------------------------------------------------------
+//
+// Diagnosing slow std_dev_clipper(AXIS_FREQ,Df=1,Dt=2)
+
+
+void slow_code_puzzle(int nfreq, int nt_chunk, int stride, const float *i_in, float *w_in, float *i_tmp, float *w_tmp)
+{
+    using T = float;
+    constexpr int S = 8;
+
+    const simd_t<T,S> zero = 0;
+    const simd_t<T,S> one = 1;
+    
+    for (int it = 0; it < nt_chunk; it += 2*S) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    simd_ntuple<T,S,2> w_tuple, wi_tuple;
+
+	    w_tuple.loadu(w_in + ifreq*stride + it);
+	    wi_tuple.loadu(i_in + ifreq*stride + it);
+	    wi_tuple *= w_tuple;
+	    
+#if 0
+	    simd_t<T,S> wival = simd_downsample(wi_tuple);
+	    simd_t<T,S> wval = simd_downsample(w_tuple);
+#else
+	    simd_t<T,S> wival = wi_tuple.vertical_sum();
+	    simd_t<T,S> wval = w_tuple.vertical_sum();
+#endif
+
+	    // simd_t<T,S> c = (wval <= zero);
+	    // simd_t<T,S> ival = wival / (wval + (c & one));
+		
+	    simd_t<T,S> ival = wival / blendv(wval.compare_gt(zero), wval, one);
+	    // simd_t<T,S> ival = wival / wval;
+	    // simd_t<T,S> ival = wival;
+	    
+	    ival.storeu(i_tmp + ifreq*S);
+	    wval.storeu(w_tmp + ifreq*S);
+	}
+    }
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
 struct memory_access_timing_thread : public kernel_timing_thread {
     memory_access_timing_thread(const shared_ptr<timing_thread_pool> &pool_, const kernel_timing_params &params_) :
 	kernel_timing_thread(pool_, params_)
@@ -235,11 +282,6 @@ struct memory_access_timing_thread : public kernel_timing_thread {
     // This is a "mockup" of intensity_clipper(AXIS_FREQ).
     void time_fclip(int ic_iter)
     {
-	if (!this->i_tmp)
-	    this->i_tmp = aligned_alloc<float> (S * nfreq);
-	if (!this->w_tmp)
-	    this->w_tmp = aligned_alloc<float> (S * nfreq);
-	    
 	stringstream ss1;
 	ss1 << "mock_fclip_in_place(" << ic_iter << ")";
 	string s1 = ss1.str();
@@ -266,13 +308,32 @@ struct memory_access_timing_thread : public kernel_timing_thread {
 		
     }
 
+    void time_slow_code_puzzle()
+    {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it++) {
+		intensity[ifreq*stride+it] = 0.0;
+		weights[ifreq*stride+it] = 1.0;
+	    }
+	}
+	       
+	this->start_timer();
+	for (int iter = 0; iter < niter; iter++)
+	    slow_code_puzzle(nfreq, nt_chunk, stride, intensity, weights, i_tmp, w_tmp);
+	this->stop_timer("slow_code_puzzle");
+    }
+
     virtual void thread_body() override 
     {
 	rf_assert(nfreq % 16 == 0);
 	rf_assert(nt_chunk % 64 == 0);
 
 	this->allocate();
+	this->i_tmp = aligned_alloc<float> (S * nfreq);
+	this->w_tmp = aligned_alloc<float> (S * nfreq);
 
+	this->time_slow_code_puzzle();
+	
 	for (int ic_iter = 1; ic_iter < 6; ic_iter++)
 	    time_fclip(ic_iter);
 	

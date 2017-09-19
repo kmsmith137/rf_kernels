@@ -28,7 +28,7 @@ struct std_dev_clipper {
     std_dev_clipper(int nfreq, int nt_chunk, axis_type axis, double sigma, int Df=1, int Dt=1, bool two_pass=true);
     ~std_dev_clipper();
 
-    void clip(const float *intensity, float *weights, int stride);
+    void clip(const float *intensity, int istride, float *weights, int wstride);
 
     int nfreq_ds = 0;
     int nt_ds = 0;
@@ -41,7 +41,7 @@ struct std_dev_clipper {
     float *tmp_v = nullptr;  // max(nfreq_ds, nt_ds)
 
     // Function pointer to low-level kernel.
-    void (*_f)(std_dev_clipper *, const float *, float *, int) = nullptr;
+    void (*_f)(std_dev_clipper *, const float *, int, float *, int) = nullptr;
 
     // Scalar helper called by kernel
     void _clip_1d();

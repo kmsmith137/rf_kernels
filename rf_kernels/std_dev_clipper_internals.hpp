@@ -23,7 +23,7 @@ extern void clip_1d(int n, float *tmp_sd, int *tmp_valid, double sigma);
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
-inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
+inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, int istride, T *in_w, int wstride)
 {
     constexpr bool Hflag = true;
     
@@ -43,9 +43,9 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
     for (int ifreq_ds = 0; ifreq_ds < nfreq_ds; ifreq_ds++) {
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
-	ds1.downsample_1d(fp, nt_ds, stride,
-			  in_i + ifreq_ds * Df * stride,
-			  in_w + ifreq_ds * Df * stride,
+	ds1.downsample_1d(fp, nt_ds,
+			  in_i + ifreq_ds * Df * istride, istride,
+			  in_w + ifreq_ds * Df * wstride, wstride,
 			  tmp_i, tmp_w);
 
 	simd_t<T,S> mean, var;
@@ -61,13 +61,13 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
 	    continue;
 
 	for (int ifreq = ifreq_ds*Df; ifreq < (ifreq_ds+1)*Df; ifreq++)
-	    memset(in_w + ifreq*stride, 0, nt_chunk * sizeof(T));
+	    memset(in_w + ifreq*wstride, 0, nt_chunk * sizeof(T));
     }
 }
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
-inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
+inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, int istride, T *in_w, int wstride)
 {
     constexpr bool Hflag = false;
     
@@ -87,9 +87,9 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
     for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
-	ds1.downsample_1f(fp, nfreq_ds, stride,
-			  in_i + it_ds * Dt,
-			  in_w + it_ds * Dt,
+	ds1.downsample_1f(fp, nfreq_ds,
+			  in_i + it_ds * Dt, istride,
+			  in_w + it_ds * Dt, wstride,
 			  tmp_i, tmp_w);
 
 	simd_t<T,S> mean, var;
@@ -115,7 +115,7 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
 	for (int it_ds = 0; it_ds < nt_ds; it_ds += S) {
 	    simd_t<T,S> v = simd_helpers::simd_load<T,S> (tmp_v + it_ds);
 	    simd_t<T,S> mask = (v > simd_t<T,S>::zero());
-	    us0.put_mask(in_w + ifreq_us*stride + it_ds*Dt, stride, mask);
+	    us0.put_mask(in_w + ifreq_us*wstride + it_ds*Dt, wstride, mask);
 	}
     }
 }
@@ -127,7 +127,7 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
-inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
+inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, int istride, T *in_w, int wstride)
 {
     constexpr bool Hflag = true;
     
@@ -137,7 +137,7 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
     float *tmp_v = sd->tmp_v;
     
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	_wrms_buf_linear<T,S> buf(in_i + ifreq*stride, in_w + ifreq*stride, nt_chunk);
+	_wrms_buf_linear<T,S> buf(in_i + ifreq*istride, in_w + ifreq*wstride, nt_chunk);
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
 	simd_t<T,S> mean, var;
@@ -152,13 +152,13 @@ inline void kernel_std_dev_clipper_taxis(std_dev_clipper *sd, const T *in_i, T *
 	if (tmp_v[ifreq] > 0.0)
 	    continue;
 
-	memset(in_w + ifreq*stride, 0, nt_chunk * sizeof(T));
+	memset(in_w + ifreq*wstride, 0, nt_chunk * sizeof(T));
     }
 }
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
-inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *in_w, int stride)
+inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, int istride, T *in_w, int wstride)
 {
     constexpr bool Hflag = false;
     
@@ -168,7 +168,7 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
     float *tmp_v = sd->tmp_v;
 
     for (int it = 0; it < nt_chunk; it += S) {
-	_wrms_buf_scattered<T,S> buf(in_i+it, in_w+it, nfreq, stride);
+	_wrms_buf_scattered<T,S> buf(in_i+it, in_w+it, nfreq, istride, wstride);
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 		
 	simd_t<T,S> mean, var;
@@ -185,7 +185,7 @@ inline void kernel_std_dev_clipper_faxis(std_dev_clipper *sd, const T *in_i, T *
 	for (int it = 0; it < nt_chunk; it += S) {
 	    simd_t<T,S> v = simd_helpers::simd_load<T,S> (tmp_v + it);
 	    simd_t<T,S> mask = (v > simd_t<T,S>::zero());
-	    _mask_strided<R> (in_w + ifreq*stride + it, mask, stride);
+	    _mask_strided<R> (in_w + ifreq*wstride + it, mask, wstride);
 	}
     }
 }

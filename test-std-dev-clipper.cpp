@@ -20,13 +20,13 @@ using namespace rf_kernels;
 // would be equivalent.
 
 
-static void reference_std_dev_clipper(const float *intensity, float *weights, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt, bool two_pass)
+static void reference_std_dev_clipper(const float *intensity, float *weights, int nfreq, int nt, int istride, int wstride, axis_type axis, double sigma, int Df, int Dt, bool two_pass)
 {
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt, Dt);
 
     rf_kernels::weighted_mean_rms wrms(nfreq, nt, axis, Df, Dt, 1, 0, two_pass);
-    wrms.compute_wrms(intensity, weights, stride);
+    wrms.compute_wrms(intensity, istride, weights, wstride);
     
     rf_kernels::std_dev_clipper sd(nfreq, nt, axis, sigma, Df, Dt, two_pass);
     rf_assert(sd.ntmp_v == wrms.nout);
@@ -45,7 +45,7 @@ static void reference_std_dev_clipper(const float *intensity, float *weights, in
 
 	    for (int ifreq = 0; ifreq < nfreq; ifreq++)
 		for (int it = it_ds*Dt; it < (it_ds+1)*Dt; it++)
-		    weights[ifreq*stride + it] = 0.0;
+		    weights[ifreq*wstride + it] = 0.0;
 	}
     }
     else {
@@ -57,29 +57,29 @@ static void reference_std_dev_clipper(const float *intensity, float *weights, in
 
 	    for (int ifreq = (ifreq_ds)*Df; ifreq < (ifreq_ds+1)*Df; ifreq++)
 		for (int it = 0; it < nt; it++)
-		    weights[ifreq*stride + it] = 0.0;
+		    weights[ifreq*wstride + it] = 0.0;
 	}
     }
 }
 
 
-static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int stride, axis_type axis, double sigma, int Df, int Dt, bool two_pass)
+static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int istride, int wstride, axis_type axis, double sigma, int Df, int Dt, bool two_pass)
 {
 #if 0
-    cout << "test_std_dev_clipper: nfreq=" << nfreq << ", nt=" << nt << ", stride=" << stride << ", axis=" << axis 
-	 << ", sigma=" << sigma << ", Df=" << Df << ", Dt=" << Dt << ", two_pass=" << two_pass << endl;
+    cout << "test_std_dev_clipper: nfreq=" << nfreq << ", nt=" << nt << ", istride=" << istride << ", wstride=" << wstride
+	 << ", axis=" << axis << ", sigma=" << sigma << ", Df=" << Df << ", Dt=" << Dt << ", two_pass=" << two_pass << endl;
 #endif
 
-    vector<float> in_i = vector<float> (nfreq * stride, 0.0);
-    vector<float> in_w = vector<float> (nfreq * stride, 0.0);
+    vector<float> in_i = vector<float> (nfreq * istride, 0.0);
+    vector<float> in_w = vector<float> (nfreq * wstride, 0.0);
 
     // Low value chosen to expose corner cases.
     float pnonzero = 1.0 / float(Df*Dt);
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
-	    in_i[ifreq*stride+it] = uniform_rand(rng);
-	    in_w[ifreq*stride+it] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
+	    in_i[ifreq*istride+it] = uniform_rand(rng);
+	    in_w[ifreq*wstride+it] = (uniform_rand(rng) < pnonzero) ? uniform_rand(rng) : 0.0;
 	}
     }
 
@@ -88,14 +88,14 @@ static void test_std_dev_clipper(std::mt19937 &rng, int nfreq, int nt, int strid
 
     // Fast kernel.
     std_dev_clipper sd(nfreq, nt, axis, sigma, Df, Dt, two_pass);
-    sd.clip(&in_i[0], &in_w[0], stride);
+    sd.clip(&in_i[0], istride, &in_w[0], wstride);
 
     // Reference kernels.
-    reference_std_dev_clipper(&in_i[0], &in_w2[0], nfreq, nt, stride, axis, sigma, Df, Dt, two_pass);
+    reference_std_dev_clipper(&in_i[0], &in_w2[0], nfreq, nt, istride, wstride, axis, sigma, Df, Dt, two_pass);
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
-	    int i = ifreq * stride + it;
+	    int i = ifreq * wstride + it;
 	    rf_assert(in_w[i] == in_w2[i]);
 	}
     }
@@ -109,7 +109,8 @@ static void test_std_dev_clipper(std::mt19937 &rng)
 	int Dt = 1 << randint(rng, 0, 6);
 	int nfreq = Df * randint(rng, 1, 65);
 	int nt = 8 * Dt * randint(rng, 1, 17);
-	int stride = randint(rng, nt, 2*nt);
+	int istride = randint(rng, nt, 2*nt);
+	int wstride = randint(rng, nt, 2*nt);
 	axis_type axis = randint(rng, 0, 2) ? AXIS_FREQ : AXIS_TIME;
 	double sigma = uniform_rand(rng, 1.1, 1.5);
 	bool two_pass = randint(rng, 0, 2);
@@ -117,7 +118,7 @@ static void test_std_dev_clipper(std::mt19937 &rng)
 	// Round up to multiple of 8.
 	nfreq = ((nfreq+7)/8) * 8;
 
-	test_std_dev_clipper(rng, nfreq, nt, stride, axis, sigma, Df, Dt, two_pass);
+	test_std_dev_clipper(rng, nfreq, nt, istride, wstride, axis, sigma, Df, Dt, two_pass);
     }
 
     cout << "test_std_dev_clipper: pass" << endl;

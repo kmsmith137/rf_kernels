@@ -36,7 +36,7 @@ struct intensity_clipper_timing_thread : public kernel_timing_thread {
 			    this->start_timer();
 			    
 			    for (int iter = 0; iter < this->niter; iter++)
-				ic.clip(intensity, weights, stride);
+				ic.clip(intensity, stride, weights, stride);
 			    
 			    this->stop_timer2(cp);
 			}

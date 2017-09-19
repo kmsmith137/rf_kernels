@@ -15,11 +15,10 @@ namespace rf_kernels {
 
 
 struct wrms_kernel_table {
-    // (wp, intensity, weights, stride)
-    using kernel_t = void (*)(const weighted_mean_rms *, const float *, const float *, int);
+    // (wp, intensity, istride, weights, stride)
+    using kernel_t = void (*)(const weighted_mean_rms *, const float *, int, const float *, int);
 
     // (axis, Df, Dt, two_pass)
-    // Currently assume (axis, two_pass) = (AXIS_TIME, true).
     unordered_map<array<int,4>, kernel_t> kernel_table;
 
 
@@ -148,15 +147,18 @@ weighted_mean_rms::~weighted_mean_rms()
 }
 
 
-void weighted_mean_rms::compute_wrms(const float *intensity, const float *weights, int stride)
+void weighted_mean_rms::compute_wrms(const float *intensity, int istride, const float *weights, int wstride)
 {
     if (_unlikely(!intensity || !weights))
 	throw runtime_error("rf_kernels: null pointer passed to weighted_mean_rms::compute_wrms()");
 
-    if (_unlikely(abs(stride) < nt_chunk))
-	throw runtime_error("rf_kernels::weighed_mean_rms: stride is too small");
+    if (_unlikely(abs(istride) < nt_chunk))
+	throw runtime_error("rf_kernels::weighed_mean_rms: istride is too small");
+    
+    if (_unlikely(abs(wstride) < nt_chunk))
+	throw runtime_error("rf_kernels::weighed_mean_rms: wstride is too small");
 
-    this->_f(this, intensity, weights, stride);
+    this->_f(this, intensity, istride, weights, wstride);
 }
 
 

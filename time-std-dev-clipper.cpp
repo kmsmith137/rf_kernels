@@ -55,7 +55,7 @@ struct std_dev_clipper_timing_thread : public kernel_timing_thread {
 
 			    this->unpause_timer();
 			    
-			    sd.clip(intensity, weights, stride);
+			    sd.clip(intensity, stride, weights, stride);
 			}
 			
 			this->stop_timer2(cp);

@@ -29,8 +29,8 @@ namespace std_dev_clipper_table {
 }; // pacify emacs c-mode
 #endif
 
-// kernel(sd, intensity, weights, stride)
-using kernel_t = void (*)(std_dev_clipper *sd, const float *, float *, int);
+// kernel(sd, intensity, istride, weights, wstride)
+using kernel_t = void (*)(std_dev_clipper *sd, const float *, int, float *, int);
 
 // (axis, Df, Dt, two_pass) -> kernel
 static unordered_map<array<int,4>, kernel_t> kernel_table;
@@ -154,14 +154,18 @@ std_dev_clipper::~std_dev_clipper()
 }
    
 
-void std_dev_clipper::clip(const float *intensity, float *weights, int stride)
+void std_dev_clipper::clip(const float *intensity, int istride,float *weights, int wstride)
 {
     if (_unlikely(!intensity || !weights))
 	throw runtime_error("rf_kernels: null pointer passed to std_dev_clipper::clip()");
-    if (_unlikely(abs(stride) < nt_chunk))
-	throw runtime_error("rf_kernels::std_dev_clipper: stride is too small");
+    
+    if (_unlikely(abs(istride) < nt_chunk))
+	throw runtime_error("rf_kernels::std_dev_clipper: istride is too small");
+    
+    if (_unlikely(abs(wstride) < nt_chunk))
+	throw runtime_error("rf_kernels::std_dev_clipper: wstride is too small");
 
-    this->_f(this, intensity, weights, stride);
+    this->_f(this, intensity, istride, weights, wstride);
 }
 
 

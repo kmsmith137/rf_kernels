@@ -138,13 +138,15 @@ struct _wrms_buf_scattered
     const T *i_buf;
     const T *w_buf;
     const int nfreq;
-    const int stride;
+    const int istride;
+    const int wstride;
 
-    _wrms_buf_scattered(const T *i_buf_, const T *w_buf_, int nfreq_, int stride_) : 
+    _wrms_buf_scattered(const T *i_buf_, const T *w_buf_, int nfreq_, int istride_, int wstride_) : 
 	i_buf(i_buf_), 
 	w_buf(w_buf_), 
 	nfreq(nfreq_),
-	stride(stride_)
+	istride(istride_),
+	wstride(wstride_)
     { }
 
 
@@ -153,8 +155,8 @@ struct _wrms_buf_scattered
 	wsum = wisum = simd_t<T,S>::zero();
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride);
 
 	    wisum += wval * ival;
 	    wsum += wval;
@@ -167,8 +169,8 @@ struct _wrms_buf_scattered
 	simd_t<T,S> wiisum = simd_t<T,S>::zero();
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride);
 	    
 	    ival -= mean;
 	    wiisum += wval * ival * ival;
@@ -183,8 +185,8 @@ struct _wrms_buf_scattered
 	wsum = wisum = wiisum = simd_t<T,S>::zero();
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride);
 	    
 	    simd_t<T,S> wival = wval * ival;
 	    wiisum += wival * ival;
@@ -199,8 +201,8 @@ struct _wrms_buf_scattered
 	wsum = wisum = wiisum = simd_t<T,S>::zero();
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
-	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride);
+	    simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride);
+	    simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride);
 	    
 	    // Use mean from previous iteration to (hopefully!) improve numerical stability.
 	    ival -= mean;
@@ -220,7 +222,7 @@ struct _wrms_buf_scattered
     // For intensity_clipper.
     inline simd_t<T,S> get_mask(simd_t<T,S> mean, simd_t<T,S> thresh, int ifreq) const
     {
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride);
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride);
 	ival -= mean;
 
 	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
@@ -237,14 +239,16 @@ struct _wrms_buf_strided
     const T *w_buf;
     const int nfreq;
     const int nt_chunk;
-    const int stride;
+    const int istride;
+    const int wstride;
 
-    _wrms_buf_strided(const T *i_buf_, const T *w_buf_, int nfreq_, int nt_chunk_, int stride_) :
+    _wrms_buf_strided(const T *i_buf_, const T *w_buf_, int nfreq_, int nt_chunk_, int istride_, int wstride_) :
 	i_buf(i_buf_),
 	w_buf(w_buf_),
 	nfreq(nfreq_),
 	nt_chunk(nt_chunk_),
-	stride(stride_)
+	istride(istride_),
+	wstride(wstride_)
     { }
 
     
@@ -254,8 +258,8 @@ struct _wrms_buf_strided
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt_chunk; it += S) {
-		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
-		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride + it);
 
 		wisum += wval * ival;
 		wsum += wval;
@@ -270,8 +274,8 @@ struct _wrms_buf_strided
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt_chunk; it += S) {
-		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
-		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride + it);
 	    
 		ival -= mean;
 		wiisum += wval * ival * ival;
@@ -288,8 +292,8 @@ struct _wrms_buf_strided
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt_chunk; it += S) {
-		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
-		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride + it);
 	    
 		simd_t<T,S> wival = wval * ival;
 		wiisum += wival * ival;
@@ -306,8 +310,8 @@ struct _wrms_buf_strided
 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt_chunk; it += S) {
-		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
-		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*stride + it);
+		simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride + it);
+		simd_t<T,S> wval = simd_helpers::simd_load<T,S> (w_buf + ifreq*wstride + it);
 	    
 		// Use mean from previous iteration to (hopefully!) improve numerical stability.
 		ival -= mean;
@@ -328,7 +332,7 @@ struct _wrms_buf_strided
     // For intensity_clipper.
     inline simd_t<T,S> get_mask(simd_t<T,S> mean, simd_t<T,S> thresh, int ifreq, int it) const
     {
-	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*stride + it);
+	simd_t<T,S> ival = simd_helpers::simd_load<T,S> (i_buf + ifreq*istride + it);
 	ival -= mean;
 
 	// Note: use of "<" here (rather than "<=") means that we always mask if thresh=0.
@@ -533,7 +537,7 @@ inline void _wrms_iterate(Tbuf &buf, simd_t<T,S> &mean, simd_t<T,S> &var, int ni
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
-inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, int istride, const T *in_w, int wstride)
 {
     constexpr int Hflag = true;
     
@@ -554,9 +558,9 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
-	ds1.downsample_1d(fp, nt_ds, stride,
-			  in_i + ifreq * Df * stride,
-			  in_w + ifreq * Df * stride,
+	ds1.downsample_1d(fp, nt_ds,
+			  in_i + ifreq * Df * istride, istride,
+			  in_w + ifreq * Df * wstride, wstride,
 			  tmp_i, tmp_w);
 
 	simd_t<T,S> mean, var;
@@ -572,7 +576,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
-inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, int istride, const T *in_w, int wstride)
 {
     constexpr int Hflag = false;
     
@@ -594,9 +598,9 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     for (int it = 0; it < nt_ds; it += S) {
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 	
-	ds1.downsample_1f(fp, nfreq_ds, stride,
-			  in_i + it*Dt,
-			  in_w + it*Dt,
+	ds1.downsample_1f(fp, nfreq_ds,
+			  in_i + it*Dt, istride,
+			  in_w + it*Dt, wstride,
 			  tmp_i, tmp_w);
 
 	simd_t<T,S> mean, var;
@@ -611,7 +615,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX>1)||(DtX>1)),int>::type = 0>
-inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, int istride, const T *in_w, int wstride)
 {
     constexpr int Hflag = true;
     
@@ -631,9 +635,9 @@ inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const 
     _wrms_first_pass<T,S,Hflag,TwoPass> fp;
     
     for (int ifreq = 0; ifreq < nfreq_ds; ifreq++) {	
-	ds1.downsample_1d(fp, nt_ds, stride,
-			  in_i + ifreq * Df * stride,
-			  in_w + ifreq * Df * stride,
+	ds1.downsample_1d(fp, nt_ds,
+			  in_i + ifreq * Df * istride, istride,
+			  in_w + ifreq * Df * wstride, wstride,
 			  tmp_i + ifreq * nt_ds,
 			  tmp_w + ifreq * nt_ds);
     }
@@ -653,7 +657,7 @@ inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const 
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
-inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, int istride, const T *in_w, int wstride)
 {
     constexpr int Hflag = true;
     
@@ -666,7 +670,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_rms = wp->out_rms;
 	
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	_wrms_buf_linear<T,S> buf(in_i + ifreq*stride, in_w + ifreq*stride, nt);
+	_wrms_buf_linear<T,S> buf(in_i + ifreq*istride, in_w + ifreq*wstride, nt);
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 
 	simd_t<T,S> mean, var;
@@ -681,7 +685,7 @@ inline void kernel_wrms_taxis(const weighted_mean_rms *wp, const T *in_i, const 
 }
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
-inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, int istride, const T *in_w, int wstride)
 {
     constexpr int Hflag = false;
     
@@ -694,7 +698,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_rms = wp->out_rms;
     
     for (int it = 0; it < nt; it += S) {
-	_wrms_buf_scattered<T,S> buf(in_i + it, in_w + it, nfreq, stride);
+	_wrms_buf_scattered<T,S> buf(in_i + it, in_w + it, nfreq, istride, wstride);
 	_wrms_first_pass<T,S,Hflag,TwoPass> fp;
 
 	simd_t<T,S> mean, var;
@@ -709,7 +713,7 @@ inline void kernel_wrms_faxis(const weighted_mean_rms *wp, const T *in_i, const 
 
 
 template<typename T, int S, int DfX, int DtX, bool TwoPass, typename std::enable_if<((DfX==1)&&(DtX==1)),int>::type = 0>
-inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const T *in_w, int stride)
+inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, int istride, const T *in_w, int wstride)
 {
     constexpr int Hflag = true;
     
@@ -721,7 +725,7 @@ inline void kernel_wrms_naxis(const weighted_mean_rms *wp, const T *in_i, const 
     float *out_mean = wp->out_mean;
     float *out_rms = wp->out_rms;
 
-    _wrms_buf_strided<T,S> buf(in_i, in_w, nfreq, nt, stride);
+    _wrms_buf_strided<T,S> buf(in_i, in_w, nfreq, nt, istride, wstride);
     _wrms_first_pass<T,S,Hflag,TwoPass> fp;
 
     simd_t<T,S> mean, var;

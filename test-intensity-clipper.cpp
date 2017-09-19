@@ -22,7 +22,7 @@ using namespace rf_kernels;
 //   - updates inout_mean, and fills out_rms.
 //   - if the "epsilon" check fails, out_rms will be set to zero, but inout_mean will still be updated.
 
-static void _ref_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int nt, const float *i_in, const float *w_in, int stride, float eps_multiplier)
+static void _ref_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int nt, const float *i_in, int istride, const float *w_in, int wstride, float eps_multiplier)
 {
     float wsum = 0.0;
     float wisum = 0.0;
@@ -31,8 +31,8 @@ static void _ref_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int 
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
-	    float wval = w_in[ifreq*stride + it];
-	    float dival = i_in[ifreq*stride + it] - in_mean;
+	    float wval = w_in[ifreq*wstride + it];
+	    float dival = i_in[ifreq*istride + it] - in_mean;
 
 	    wsum += wval;
 	    wisum += wval * dival;
@@ -66,25 +66,25 @@ static void _ref_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int 
 //   - updates inout_mean, and fills out_rms.
 //   - if the "epsilon" check fails, out_rms will be set to zero, but inout_mean will still be updated.
 
-static void reference_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, const float *w_in, int stride, float eps_multiplier)
+static void reference_wrms_iterate(float *inout_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, int istride, const float *w_in, int wstride, float eps_multiplier)
 {
     if (axis == AXIS_FREQ) {
 	for (int it = 0; it < nt; it++)
-	    _ref_wrms_iterate(inout_mean + it, out_rms + it, nfreq, 1, i_in + it, w_in + it, stride, eps_multiplier);
+	    _ref_wrms_iterate(inout_mean + it, out_rms + it, nfreq, 1, i_in + it, istride, w_in + it, wstride, eps_multiplier);
     }
     else if (axis == AXIS_TIME) {
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	    _ref_wrms_iterate(inout_mean + ifreq, out_rms + ifreq, 1, nt, i_in + ifreq*stride, w_in + ifreq*stride, 0, eps_multiplier);
+	    _ref_wrms_iterate(inout_mean + ifreq, out_rms + ifreq, 1, nt, i_in + ifreq*istride, 0, w_in + ifreq*wstride, 0, eps_multiplier);
     }
     else if (axis == AXIS_NONE)
-	_ref_wrms_iterate(inout_mean, out_rms, nfreq, nt, i_in, w_in, stride, eps_multiplier);
+	_ref_wrms_iterate(inout_mean, out_rms, nfreq, nt, i_in, istride, w_in, wstride, eps_multiplier);
     else
 	throw runtime_error("bad axis in reference_wrms()");
 }
 
 
 // reference_wrms_compute(): computes wrms from scratch, i.e. does not assume that 'out_mean' has been initialized.
-static void reference_wrms_compute(float *out_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, const float *w_in, int stride, bool two_pass, float eps_multiplier)
+static void reference_wrms_compute(float *out_mean, float *out_rms, int nfreq, int nt, axis_type axis, const float *i_in, int istride, const float *w_in, int wstride, bool two_pass, float eps_multiplier)
 {
     int nout = 1;
     if (axis == AXIS_FREQ) nout = nt;
@@ -92,41 +92,41 @@ static void reference_wrms_compute(float *out_mean, float *out_rms, int nfreq, i
 
     memset(out_mean, 0, nout * sizeof(*out_mean));
     
-    reference_wrms_iterate(out_mean, out_rms, nfreq, nt, axis, i_in, w_in, stride, eps_multiplier);
+    reference_wrms_iterate(out_mean, out_rms, nfreq, nt, axis, i_in, istride, w_in, wstride, eps_multiplier);
 
     if (two_pass)
-	reference_wrms_iterate(out_mean, out_rms, nfreq, nt, axis, i_in, w_in, stride, eps_multiplier);
+	reference_wrms_iterate(out_mean, out_rms, nfreq, nt, axis, i_in, istride, w_in, wstride, eps_multiplier);
 }
 
 // -------------------------------------------------------------------------------------------------
 
 
 // Helper for reference_iclip: assumes (axis,Df,Dt)=(None,1,1) and (mean,thresh) already computed.
-static void _ref_iclip(int nfreq, int nt, const float *i_in, float *w_in, int stride, float mean, float thresh)
+static void _ref_iclip(int nfreq, int nt, const float *i_in, int istride, float *w_in, int wstride, float mean, float thresh)
 {
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	for (int it = 0; it < nt; it++) {
 	    // Note: ">=" here (not ">"), so that we always mask if thresh=0.
-	    if (abs(i_in[ifreq*stride+it] - mean) >= thresh)
-		w_in[ifreq*stride+it] = 0.0;
+	    if (abs(i_in[ifreq*istride+it] - mean) >= thresh)
+		w_in[ifreq*wstride+it] = 0.0;
 	}
     }
 }
 
 
 // reference_iclip: assumes (Df,Dt)=(1,1) and (mean,rms) precomputed, but allows arbitrary axis.
-static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in, float *w_in, int stride, const float *mean, const float *rms, float sigma)
+static void reference_iclip(int nfreq, int nt, axis_type axis, const float *i_in, int istride, float *w_in, int wstride, const float *mean, const float *rms, float sigma)
 {
     if (axis == AXIS_FREQ) {
 	for (int it = 0; it < nt; it++)
-	    _ref_iclip(nfreq, 1, i_in + it, w_in + it, stride, mean[it], sigma * rms[it]);
+	    _ref_iclip(nfreq, 1, i_in + it, istride, w_in + it, wstride, mean[it], sigma * rms[it]);
     }
     else if (axis == AXIS_TIME) {
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	    _ref_iclip(1, nt, i_in + ifreq*stride, w_in + ifreq*stride, 0, mean[ifreq], sigma * rms[ifreq]);
+	    _ref_iclip(1, nt, i_in + ifreq*istride, 0, w_in + ifreq*wstride, 0, mean[ifreq], sigma * rms[ifreq]);
     }
     else if (axis == AXIS_NONE)
-	_ref_iclip(nfreq, nt, i_in, w_in, stride, mean[0], sigma * rms[0]);
+	_ref_iclip(nfreq, nt, i_in, istride, w_in, wstride, mean[0], sigma * rms[0]);
     else
 	throw runtime_error("bad axis in reference_iclip()");
 }
@@ -203,7 +203,7 @@ static void _simulate_evil_data(std::mt19937 &rng, float *intensity, float *weig
 }
 
 
-static void simulate_evil_data(std::mt19937 &rng, int nfreq, int nt, float *intensity, float *weights, int stride, axis_type axis)
+static void simulate_evil_data(std::mt19937 &rng, int nfreq, int nt, float *intensity, int istride, float *weights, int wstride, axis_type axis)
 {
     if (axis == AXIS_FREQ) {
 	vector<float> i_tmp(nfreq, 0.0);
@@ -213,14 +213,14 @@ static void simulate_evil_data(std::mt19937 &rng, int nfreq, int nt, float *inte
 	    _simulate_evil_data(rng, &i_tmp[0], &w_tmp[0], nfreq, true);
 
 	    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-		intensity[ifreq*stride+it] = i_tmp[ifreq];
-		weights[ifreq*stride+it] = w_tmp[ifreq];
+		intensity[ifreq*istride+it] = i_tmp[ifreq];
+		weights[ifreq*wstride+it] = w_tmp[ifreq];
 	    }
 	}
     }
     else if (axis == AXIS_TIME) {
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	    _simulate_evil_data(rng, intensity + ifreq*stride, weights + ifreq*stride, nt, true);
+	    _simulate_evil_data(rng, intensity + ifreq*istride, weights + ifreq*wstride, nt, true);
     }
     else if (axis == AXIS_NONE) {
 	vector<float> i_tmp(nfreq * nt, 0.0);
@@ -229,8 +229,8 @@ static void simulate_evil_data(std::mt19937 &rng, int nfreq, int nt, float *inte
 	
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt; it++) {
-		intensity[ifreq*stride+it] = i_tmp[ifreq*nt+it];
-		weights[ifreq*stride+it] = w_tmp[ifreq*nt+it];
+		intensity[ifreq*istride+it] = i_tmp[ifreq*nt+it];
+		weights[ifreq*wstride+it] = w_tmp[ifreq*nt+it];
 	    }
 	}
     }
@@ -242,7 +242,7 @@ static void simulate_evil_data(std::mt19937 &rng, int nfreq, int nt, float *inte
 // -------------------------------------------------------------------------------------------------
 
 
-static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, bool two_pass)
+static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int istride, int wstride, axis_type axis, int Df, int Dt, int niter, double sigma, bool two_pass)
 {
     int verbosity = 0;  // increase for debugging
     int nfreq_ds = xdiv(nfreq, Df);
@@ -252,9 +252,9 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     if (axis == AXIS_FREQ) nout = nt_ds;
     if (axis == AXIS_TIME) nout = nfreq_ds;
 
-    vector<float> i_in(nfreq*stride, 0.0);
-    vector<float> w_in(nfreq*stride, 0.0);
-    simulate_evil_data(rng, nfreq, nt_chunk, &i_in[0], &w_in[0], stride, axis);
+    vector<float> i_in(nfreq*istride, 0.0);
+    vector<float> w_in(nfreq*wstride, 0.0);
+    simulate_evil_data(rng, nfreq, nt_chunk, &i_in[0], istride, &w_in[0], wstride, axis);
 
     rf_kernels::weighted_mean_rms wrms(nfreq, nt_chunk, axis, Df, Dt, niter, sigma, two_pass);    
     rf_assert(wrms.nfreq_ds == nfreq_ds);
@@ -263,7 +263,7 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 
     // Run fast wrms kernel.
     // Reminder: the outputs are stored in wrms.out_mean[] and wrms.out_rms[].
-    wrms.compute_wrms(&i_in[0], &w_in[0], stride);
+    wrms.compute_wrms(&i_in[0], istride, &w_in[0], wstride);
 
     // The rest of this routine is devoted to computing something to compare to!
 
@@ -292,16 +292,16 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 
     if (niter == 1) {
 	rf_kernels::wi_downsampler ds(Df, Dt);
-	ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
+	ds.downsample(nfreq_ds, nt_ds, &i_ds[0], nt_ds, &w_ds[0], nt_ds, &i_in[0], istride, &w_in[0], wstride);
 
-	reference_wrms_compute(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 1.5);
-	reference_wrms_compute(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, two_pass, 0.5);
+	reference_wrms_compute(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], nt_ds, &w_ds[0], nt_ds, two_pass, 1.5);
+	reference_wrms_compute(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], nt_ds, &w_ds[0], nt_ds, two_pass, 0.5);
     }
     else {
 	// The following logic is convenient but does a little redundant computation!
 	// Call the fast wrms kernel with (N-1) iterations, to initialize the 'mean_hint' array needed by reference_wrms_iterate().
 	rf_kernels::weighted_mean_rms wrms2(nfreq, nt_chunk, axis, Df, Dt, niter-1, sigma, two_pass);
-	wrms2.compute_wrms(&i_in[0], &w_in[0], stride);
+	wrms2.compute_wrms(&i_in[0], istride, &w_in[0], wstride);
 
 	memcpy(&refc_mean[0], wrms2.out_mean, nout * sizeof(float));
 	memcpy(&refp_mean[0], wrms2.out_mean, nout * sizeof(float));
@@ -309,13 +309,13 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 	
 	// Account for the first (niter-1) iterations by clipping.
 	rf_kernels::intensity_clipper ic(nfreq, nt_chunk, axis, sigma, Df, Dt, niter-1, 0, two_pass);
-	ic.clip(&i_in[0], &w_in[0], stride);
+	ic.clip(&i_in[0], istride, &w_in[0], wstride);
 
 	rf_kernels::wi_downsampler ds(Df, Dt);
-	ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
+	ds.downsample(nfreq_ds, nt_ds, &i_ds[0], nt_ds, &w_ds[0], nt_ds, &i_in[0], istride, &w_in[0], wstride);
 
-	reference_wrms_iterate(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 1.5);
-	reference_wrms_iterate(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds[0], nt_ds, 0.5);
+	reference_wrms_iterate(&refc_mean[0], &refc_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], nt_ds, &w_ds[0], nt_ds, 1.5);
+	reference_wrms_iterate(&refp_mean[0], &refp_rms[0], nfreq_ds, nt_ds, axis, &i_ds[0], nt_ds, &w_ds[0], nt_ds, 0.5);
     }
 
     // Step 2: compare outputs!    
@@ -358,8 +358,9 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
     bool failed = (icmp < nout);
 
     if (failed || (verbosity >= 1)) {
-	cout << "test_wrms(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride << ",axis=" << axis
-	     << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma << ",two_pass=" << two_pass << ")\n";
+	cout << "test_wrms(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",istride=" << istride
+	     << ",wstride=" << wstride << ",axis=" << axis << ",Df=" << Df << ",Dt=" << Dt
+	     << ",niter=" << niter << ",sigma=" << sigma << ",two_pass=" << two_pass << ")\n";
     }
 
     if (failed) {
@@ -377,15 +378,15 @@ static void test_wrms(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, ax
 // -------------------------------------------------------------------------------------------------
 
 
-static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, int stride, axis_type axis, int Df, int Dt, int niter, double sigma, double iter_sigma, bool two_pass)
+static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, int istride, int wstride, axis_type axis, int Df, int Dt, int niter, double sigma, double iter_sigma, bool two_pass)
 {
     int verbosity = 0;  // increase for debugging
     int nfreq_ds = xdiv(nfreq, Df);
     int nt_ds = xdiv(nt_chunk, Dt);
     
-    vector<float> i_in(nfreq*stride, 0.0);
-    vector<float> w_in(nfreq*stride, 0.0);
-    simulate_evil_data(rng, nfreq, nt_chunk, &i_in[0], &w_in[0], stride, axis);
+    vector<float> i_in(nfreq*istride, 0.0);
+    vector<float> w_in(nfreq*wstride, 0.0);
+    simulate_evil_data(rng, nfreq, nt_chunk, &i_in[0], istride, &w_in[0], wstride, axis);
 
     rf_kernels::intensity_clipper ic(nfreq, nt_chunk, axis, sigma, Df, Dt, niter, iter_sigma, two_pass);
     rf_assert(ic.nfreq_ds == nfreq_ds);
@@ -393,7 +394,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
 
     // Run fast kernel.
     vector<float> w_fast = w_in;
-    ic.clip(&i_in[0], &w_fast[0], stride);
+    ic.clip(&i_in[0], istride, &w_fast[0], wstride);
 
     // The rest of this routine is devoted to computing something to compare to!
 
@@ -402,7 +403,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     // Note 'iter_sigma' here (not sigma).
 
     rf_kernels::weighted_mean_rms wrms(nfreq, nt_chunk, axis, Df, Dt, niter, iter_sigma, two_pass);
-    wrms.compute_wrms(&i_in[0], &w_in[0], stride);
+    wrms.compute_wrms(&i_in[0], istride, &w_in[0], wstride);
 
     // Step 2: downsample.
 
@@ -410,23 +411,23 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     vector<float> w_ds(nfreq_ds * nt_ds, 0.0);
 
     rf_kernels::wi_downsampler ds(Df, Dt);
-    ds.downsample(nfreq_ds, nt_ds, &i_ds[0], &w_ds[0], nt_ds, &i_in[0], &w_in[0], stride);
+    ds.downsample(nfreq_ds, nt_ds, &i_ds[0], nt_ds, &w_ds[0], nt_ds, &i_in[0], istride, &w_in[0], wstride);
 
     // Step 3: run reference intensity clipper.
     // We do this twice, with slightly different thresholds, for numerical stability.
     vector<float> w_ds1 = w_ds;
     vector<float> w_ds2 = w_ds;
 
-    reference_iclip(nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds1[0], nt_ds, wrms.out_mean, wrms.out_rms, 0.9999 * sigma);
-    reference_iclip(nfreq_ds, nt_ds, axis, &i_ds[0], &w_ds2[0], nt_ds, wrms.out_mean, wrms.out_rms, 1.0001 * sigma);
+    reference_iclip(nfreq_ds, nt_ds, axis, &i_ds[0], nt_ds, &w_ds1[0], nt_ds, wrms.out_mean, wrms.out_rms, 0.9999 * sigma);
+    reference_iclip(nfreq_ds, nt_ds, axis, &i_ds[0], nt_ds, &w_ds2[0], nt_ds, wrms.out_mean, wrms.out_rms, 1.0001 * sigma);
 
     // Step 4: upsample weights (twice)
     vector<float> w_ref1 = w_in;
     vector<float> w_ref2 = w_in;
 
     rf_kernels::weight_upsampler us(Df, Dt);
-    us.upsample(nfreq_ds, nt_ds, &w_ref1[0], stride, &w_ds1[0], nt_ds);
-    us.upsample(nfreq_ds, nt_ds, &w_ref2[0], stride, &w_ds2[0], nt_ds);
+    us.upsample(nfreq_ds, nt_ds, &w_ref1[0], wstride, &w_ds1[0], nt_ds);
+    us.upsample(nfreq_ds, nt_ds, &w_ref2[0], wstride, &w_ds2[0], nt_ds);
 
     // Step 5: Compare!
 
@@ -436,7 +437,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     try {
 	while (ifreq_c < nfreq) {
 	    while (it_c < nt_chunk) {
-		int i = ifreq_c * stride + it_c;
+		int i = ifreq_c * wstride + it_c;
 		rf_assert(w_fast[i] >= w_ref1[i]);
 		rf_assert(w_fast[i] <= w_ref2[i]);
 		it_c++;
@@ -452,9 +453,9 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
     bool failed = (ifreq_c < nfreq) || (it_c < nt_chunk);
 
     if (failed || (verbosity >= 1)) {
-	cout << "test_intensity_clipper(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",stride=" << stride 
-	     << ",axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter << ",sigma=" << sigma 
-	     << ",iter_sigma=" << iter_sigma << ",two_pass=" << two_pass << ")" << endl;
+	cout << "test_intensity_clipper(nfreq=" << nfreq << ",nt_chunk=" << nt_chunk << ",istride=" << istride
+	     << ",wstride=" << wstride << ",axis=" << axis << ",Df=" << Df << ",Dt=" << Dt << ",niter=" << niter
+	     << ",sigma=" << sigma << ",iter_sigma=" << iter_sigma << ",two_pass=" << two_pass << ")" << endl;
     }
 
     if (failed) {
@@ -467,7 +468,7 @@ static void test_intensity_clipper(std::mt19937 &rng, int nfreq, int nt_chunk, i
 	if (axis == AXIS_NONE)
 	    cout << "    global mean=" << wrms.out_mean[0] << ", rms=" << wrms.out_rms[0] << endl;
 
-	int i = ifreq_c * stride + it_c;
+	int i = ifreq_c * wstride + it_c;
 	cout << "    at (ifreq,it) = (" << ifreq_c << "," << it_c << "): i_in= " << i_in[i]
 	     << ", w_fast=" << w_fast[i] << ", w_ref1=" << w_ref1[i] << ", w_ref2=" << w_ref2[i] << endl;
 
@@ -490,11 +491,12 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 	int niter = randint(rng, niter_min, niter_max+1);
 	int nfreq = Df * randint(rng, 1, 65);
 	int nt = 8 * Dt * randint(rng, 1, 17);
-	int stride = randint(rng, nt, 2*nt);
+	int istride = randint(rng, nt, 2*nt);
+	int wstride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.5, 1.7);
 	bool two_pass = randint(rng, 0, 2);
 
-	test_wrms(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, two_pass);
+	test_wrms(rng, nfreq, nt, istride, wstride, axis, Df, Dt, niter, sigma, two_pass);
     }
 }
 
@@ -502,7 +504,7 @@ static void test_wrms(std::mt19937 &rng, int niter_min, int niter_max)
 static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_max)
 {
     cout << "test_intensity_clipper(niter_min=" << niter_min << ",niter_max=" << niter_max << "): start" << endl;
-
+    
     for (int iouter = 0; iouter < 300; iouter++) {
 	axis_type axis = random_axis_type(rng);
 	int Df = 1 << randint(rng, 0, 6);
@@ -510,12 +512,13 @@ static void test_intensity_clipper(std::mt19937 &rng, int niter_min, int niter_m
 	int niter = randint(rng, niter_min, niter_max+1);
 	int nfreq = Df * randint(rng, 1, 65);
 	int nt = 8 * Dt * randint(rng, 1, 17);
-        int stride = randint(rng, nt, 2*nt);
+        int istride = randint(rng, nt, 2*nt);
+        int wstride = randint(rng, nt, 2*nt);
 	double sigma = uniform_rand(rng, 1.0, 1.5);
 	double iter_sigma = uniform_rand(rng, 1.5, 1.7);
 	bool two_pass = randint(rng, 0, 2);
 
-	test_intensity_clipper(rng, nfreq, nt, stride, axis, Df, Dt, niter, sigma, iter_sigma, two_pass);
+	test_intensity_clipper(rng, nfreq, nt, istride, wstride, axis, Df, Dt, niter, sigma, iter_sigma, two_pass);
     }
 }
 

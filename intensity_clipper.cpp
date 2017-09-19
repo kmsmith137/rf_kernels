@@ -26,8 +26,8 @@ namespace intensity_clipper_kernel_table {
 }; // pacify emacs c-mode
 #endif
 
-// kernel(ic, intensity, weights, stride);
-using kernel_t = void (*)(const intensity_clipper *ic, const float *, float *, int);
+// kernel(ic, intensity, istride, weights, wstride);
+using kernel_t = void (*)(const intensity_clipper *ic, const float *, int, float *, int);
  
 // (axis, Df, Dt, two_pass) -> kernel
 static unordered_map<array<int,4>, kernel_t> kernel_table;
@@ -163,15 +163,18 @@ intensity_clipper::~intensity_clipper()
 }
 
 
-void intensity_clipper::clip(const float *intensity, float *weights, int stride)
+void intensity_clipper::clip(const float *intensity, int istride, float *weights, int wstride)
 {
     if (_unlikely(!intensity || !weights))
 	throw runtime_error("rf_kernels: null pointer passed to intensity_clipper::clip()");
 
-    if (_unlikely(abs(stride) < nt_chunk))
-	throw runtime_error("rf_kernels::intensity_clipper: stride is too small");
+    if (_unlikely(abs(istride) < nt_chunk))
+	throw runtime_error("rf_kernels::intensity_clipper: istride is too small");
 
-    this->_f(this, intensity, weights, stride);
+    if (_unlikely(abs(wstride) < nt_chunk))
+	throw runtime_error("rf_kernels::intensity_clipper: wstride is too small");
+
+    this->_f(this, intensity, istride, weights, wstride);
 }
 
 
