@@ -13,6 +13,7 @@
 #include "rf_kernels/online_mask_filler.hpp"
 #include "rf_kernels/polynomial_detrender.hpp"
 #include "rf_kernels/spline_detrender.hpp"
+#include "rf_kernels/std_dev_clipper.hpp"
 #include "rf_kernels/upsample.hpp"
 #include "rf_kernels/xorshift_plus.hpp"
 
