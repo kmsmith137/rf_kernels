@@ -32,11 +32,11 @@ struct online_mask_filler {
     bool multiply_intensity_by_weights = false;
 
     // This is the fast kernel!
-    // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk) with spacing 'stride' between frequency channels.
-    void mask_fill(int nt_chunk, int stride, float *intensity, float *weights);
+    // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk), with strides (istide, wstride).
+    void mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride);
     
     // Slow reference version of mask_fill(), for testing.
-    void scalar_mask_fill(int nt_chunk, int stride, float *intensity, float *weights);
+    void scalar_mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride);
 
     // Persistent state, kept between calls to mask_fill().
     // Each of these is a 1D array of length nfreq.

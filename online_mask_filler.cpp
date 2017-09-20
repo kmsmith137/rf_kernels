@@ -91,7 +91,7 @@ inline void _write_first(float *dst, __m256 src)
 
 
 template<bool multiply_intensity_by_weights, bool modify_weights>
-void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, float *intensity, float *weights)
+void _online_mask_fill(online_mask_filler &params, int nt_chunk, float *intensity, int istride, float *weights, int wstride)
 {
     __m256 var_weight = _mm256_set1_ps(params.var_weight);
     __m256 w_clamp = _mm256_set1_ps(params.w_clamp);
@@ -120,16 +120,16 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
       for (int ichunk=0; ichunk<nt_chunk-1; ichunk += 32)
       {
 	  // Load intensity and weight arrays
-	  __m256 i0 = _mm256_loadu_ps(intensity + ifreq * stride + ichunk);
-	  __m256 i1 = _mm256_loadu_ps(intensity + ifreq * stride + ichunk + 8);
-	  __m256 i2 = _mm256_loadu_ps(intensity + ifreq * stride + ichunk + 16);
-	  __m256 i3 = _mm256_loadu_ps(intensity + ifreq * stride + ichunk + 24);
+	  __m256 i0 = _mm256_loadu_ps(intensity + ifreq * istride + ichunk);
+	  __m256 i1 = _mm256_loadu_ps(intensity + ifreq * istride + ichunk + 8);
+	  __m256 i2 = _mm256_loadu_ps(intensity + ifreq * istride + ichunk + 16);
+	  __m256 i3 = _mm256_loadu_ps(intensity + ifreq * istride + ichunk + 24);
 
-	  __m256 w0 = _mm256_loadu_ps(weights + ifreq * stride + ichunk);
-	  __m256 w1 = _mm256_loadu_ps(weights + ifreq * stride + ichunk + 8);
-	  __m256 w2 = _mm256_loadu_ps(weights + ifreq * stride + ichunk + 16);
-	  __m256 w3 = _mm256_loadu_ps(weights + ifreq * stride + ichunk + 24);
-	      
+	  __m256 w0 = _mm256_loadu_ps(weights + ifreq * wstride + ichunk);
+	  __m256 w1 = _mm256_loadu_ps(weights + ifreq * wstride + ichunk + 8);
+	  __m256 w2 = _mm256_loadu_ps(weights + ifreq * wstride + ichunk + 16);
+	  __m256 w3 = _mm256_loadu_ps(weights + ifreq * wstride + ichunk + 24);
+	  
 	  // Here, we do the variance computation:
 	  __m256 v1, wt1;
 	  var_est(v1, wt1, w0, w1, w2, w3, i0, i1, i2, i3);
@@ -162,17 +162,17 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, int stride, flo
 	  }
 	  
 	  // Store the new intensity values
-	  _mm256_storeu_ps(intensity + ifreq * stride + ichunk, i0);
-	  _mm256_storeu_ps(intensity + ifreq * stride + ichunk + 8, i1);
-	  _mm256_storeu_ps(intensity + ifreq * stride + ichunk + 16, i2);
-	  _mm256_storeu_ps(intensity + ifreq * stride + ichunk + 24, i3);
+	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk, i0);
+	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 8, i1);
+	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 16, i2);
+	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 24, i3);
 
 	  if (modify_weights) {
 	      // Store the new weight values
-	      _mm256_storeu_ps(weights + ifreq * stride + ichunk, prev_w);
-	      _mm256_storeu_ps(weights + ifreq * stride + ichunk + 8, prev_w);
-	      _mm256_storeu_ps(weights + ifreq * stride + ichunk + 16, prev_w);
-	      _mm256_storeu_ps(weights + ifreq * stride + ichunk + 24, prev_w);
+	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk, prev_w);
+	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk + 8, prev_w);
+	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk + 16, prev_w);
+	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk + 24, prev_w);
 	  }
       }
 
@@ -223,7 +223,7 @@ online_mask_filler::online_mask_filler(int nfreq_) :
 
 
 // Helper for online_mask_filler::mask_fill()
-inline void _check_args(const online_mask_filler &params, int nt_chunk, int stride, float *intensity, float *weights)
+inline void _check_args(const online_mask_filler &params, int nt_chunk, float *intensity, int istride, float *weights, int wstride)
 {
     if (nt_chunk <= 0)
 	throw runtime_error("rf_kernels::online_mask_filler: expected nt_chunk > 0");
@@ -233,8 +233,10 @@ inline void _check_args(const online_mask_filler &params, int nt_chunk, int stri
 	throw runtime_error("rf_kernels::online_mask_filler: only v1_chunk=32 is currently implemented");
     if (nt_chunk % params.v1_chunk != 0)
 	throw runtime_error("rf_kernels::online_mask_filler: expected nt_chunk to be a multiple of v1_chunk");
-    if (abs(stride) < nt_chunk)
-	throw runtime_error("rf_kernels::online_mask_filler: expected abs(stride) >= nt_chunk");
+    if (abs(istride) < nt_chunk)
+	throw runtime_error("rf_kernels::online_mask_filler: expected abs(istride) >= nt_chunk");
+    if (abs(wstride) < nt_chunk)
+	throw runtime_error("rf_kernels::online_mask_filler: expected abs(wstride) >= nt_chunk");
     if (params.var_weight <= 0.0)
 	throw runtime_error("rf_kernels::online_mask_filler: var_weight is uninitialized (or <= 0)");
     if (params.w_clamp <= 0.0)
@@ -257,23 +259,23 @@ inline void _check_args(const online_mask_filler &params, int nt_chunk, int stri
 // modify_weights = false is required for bonsai
 // modify_weights = true makes the most sense for rf_pipelines
 
-void online_mask_filler::mask_fill(int nt_chunk, int stride, float *intensity, float *weights)
+void online_mask_filler::mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride)
 {
-    _check_args(*this, nt_chunk, stride, intensity, weights);
+    _check_args(*this, nt_chunk, intensity, istride, weights, wstride);
 
     if (multiply_intensity_by_weights)
     {
         if (modify_weights)
-  	    _online_mask_fill<true, true> (*this, nt_chunk, stride, intensity, weights);
+  	    _online_mask_fill<true, true> (*this, nt_chunk, intensity, istride, weights, wstride);
         else
-	    _online_mask_fill<true, false> (*this, nt_chunk, stride, intensity, weights);
+	    _online_mask_fill<true, false> (*this, nt_chunk, intensity, istride, weights, wstride);
     }
     else
     {
         if (modify_weights)
-  	    _online_mask_fill<false, true> (*this, nt_chunk, stride, intensity, weights);
+  	    _online_mask_fill<false, true> (*this, nt_chunk, intensity, istride, weights, wstride);
         else
-	    _online_mask_fill<false, false> (*this, nt_chunk, stride, intensity, weights);
+	    _online_mask_fill<false, false> (*this, nt_chunk, intensity, istride, weights, wstride);
     }
 }
 
@@ -281,9 +283,9 @@ void online_mask_filler::mask_fill(int nt_chunk, int stride, float *intensity, f
 // ----------------------------------------------------------------------------------------------------
 
 
-void online_mask_filler::scalar_mask_fill(int nt_chunk, int stride, float *intensity, float *weights)
+void online_mask_filler::scalar_mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride)
 {
-    _check_args(*this, nt_chunk, stride, intensity, weights);
+    _check_args(*this, nt_chunk, intensity, istride, weights, wstride);
 
     // This ordering of constructor arguments makes xorshift_plus (scalar code)
     // equivalent to vec_xorshift_plus (vector code).
@@ -304,8 +306,8 @@ void online_mask_filler::scalar_mask_fill(int nt_chunk, int stride, float *inten
 	for (int ichunk = 0; ichunk < nt_chunk; ichunk += v1_chunk)
 	{
 	    // (intensity, weights) pointers for this v1_chunk
-	    float *iacc = &intensity[ifreq*stride + ichunk];
-	    float *wacc = &weights[ifreq*stride + ichunk];
+	    float *iacc = &intensity[ifreq*istride + ichunk];
+	    float *wacc = &weights[ifreq*wstride + ichunk];
 
 	    float vsum = 0;
 	    float wsum = 0;

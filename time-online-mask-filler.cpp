@@ -27,7 +27,7 @@ struct online_mask_filler_timing_thread : public kernel_timing_thread {
 	this->start_timer();
 
 	for (int i = 0; i < niter; i++)
-	    mf.mask_fill(nt_chunk, stride, intensity, weights);
+	    mf.mask_fill(nt_chunk, intensity, stride, weights, stride);
 
 	this->stop_timer2("online_mask_filler");
     }

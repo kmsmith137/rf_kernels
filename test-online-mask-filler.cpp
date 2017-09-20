@@ -64,7 +64,7 @@ inline void gen_weights(std::mt19937 &rng, float *weights, float pallzero, float
 }
 
 
-void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, int stride, int niter)
+void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, int istride, int wstride, int niter)
 {
     // Used when randomly generating weights below.
     const float pallzero = 0.2;
@@ -83,10 +83,10 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
     params2.modify_weights = params.modify_weights;
     params2.multiply_intensity_by_weights = params.multiply_intensity_by_weights;
     
-    vector<float> intensity(nfreq * stride);
-    vector<float> weights(nfreq * stride);
-    vector<float> intensity2(nfreq * stride);
-    vector<float> weights2(nfreq * stride);    
+    vector<float> intensity(nfreq * istride);
+    vector<float> weights(nfreq * wstride);
+    vector<float> intensity2(nfreq * istride);
+    vector<float> weights2(nfreq * wstride);    
 
     // As in the prng unit test, we need to ensure both random number generators are initialized with the same seed values!
     memcpy(params2.rng_state, params.rng_state, 64);
@@ -99,18 +99,18 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
 	// Intensities
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	    for (int it = 0; it < nt_chunk; it++)
-		intensity[ifreq*stride + it] = uniform_rand(rng);
+		intensity[ifreq*istride + it] = uniform_rand(rng);
 	
 	// Use custom function to generate weights 
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	    for (int it = 0; it < nt_chunk; it += 32)
-		gen_weights(rng, &weights[ifreq*stride + it], pallzero, params.w_cutoff);
+		gen_weights(rng, &weights[ifreq*wstride + it], pallzero, params.w_cutoff);
 	
 	// Copy
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt_chunk; it++) {
-		intensity2[ifreq*stride + it] = intensity[ifreq*stride + it];
-		weights2[ifreq*stride + it] = weights[ifreq*stride + it];
+		intensity2[ifreq*istride + it] = intensity[ifreq*istride + it];
+		weights2[ifreq*wstride + it] = weights[ifreq*wstride + it];
 	    }
 	}
 	
@@ -134,8 +134,8 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
 	}
 
 	// Process away!
-	params.mask_fill(nt_chunk, stride, &intensity[0], &weights[0]);
-	params2.scalar_mask_fill(nt_chunk, stride, &intensity2[0], &weights2[0]);
+	params.mask_fill(nt_chunk, &intensity[0], istride, &weights[0], wstride);
+	params2.scalar_mask_fill(nt_chunk, &intensity2[0], istride, &weights2[0], wstride);
 
 	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be 
 	// helpful for debugging any future errors! So it's easy to see where things have gone wrong!
@@ -160,20 +160,20 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
 	    for (int i=0; i<nt_chunk; i++)
 	    {
 		// Check intensity
-		if (!equality_checker(intensity[ifreq * stride + i], intensity2[ifreq * stride + i], 1.0e-6))
+		if (!equality_checker(intensity[ifreq * istride + i], intensity2[ifreq * istride + i], 1.0e-6))
 		{ 
 		    cout << "Something has gone wrong! The intensity array produced by the scalar mask filler does not match the intensity array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
-		    cout << "Scalar output: " << intensity2[ifreq * stride + i] << "\t\t Vectorized output: " << intensity[ifreq * stride + i] << endl;
+		    cout << "Scalar output: " << intensity2[ifreq * istride + i] << "\t\t Vectorized output: " << intensity[ifreq * istride + i] << endl;
 		    exit(1);
 		}
 		
 		// Check weights
-		if (!equality_checker(weights[ifreq * stride + i], weights2[ifreq * stride + i], 1.0e-6))
+		if (!equality_checker(weights[ifreq * wstride + i], weights2[ifreq * wstride + i], 1.0e-6))
 		{
 		    cout << "Something has gone wrong! The weights array produced by the scalar mask filler does not match the weights array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
-		    cout << "Scalar output: " << weights2[ifreq * stride + i] << "\t\t Vectorized output: " << weights[ifreq * stride + i] << endl;
+		    cout << "Scalar output: " << weights2[ifreq * wstride + i] << "\t\t Vectorized output: " << weights[ifreq * wstride + i] << endl;
 		    exit(1);
 		}
 	    }
@@ -193,7 +193,8 @@ void test_filler(int nouter=100)
     for (int iouter = 0; iouter < nouter; iouter++) {
 	int nfreq = randint(rng, 1, 65);
 	int nt_chunk = randint(rng, 1, 9) * 32;   // must be multiple of v1_chunk=32
-	int stride = randint(rng, nt_chunk, 2*nt_chunk);
+	int istride = randint(rng, nt_chunk, 2*nt_chunk);
+	int wstride = randint(rng, nt_chunk, 2*nt_chunk);
 	int ninner = 100;   // Number of "inner" iterations
 
 	online_mask_filler params(nfreq);
@@ -210,7 +211,7 @@ void test_filler(int nouter=100)
 	     << "    modify_weights = " << params.modify_weights << endl;
 #endif
 	
-	test_filler(rng, params, nt_chunk, stride, ninner);
+	test_filler(rng, params, nt_chunk, istride, wstride, ninner);
     }
 
     cout << "***online_mask_filler unit test passed!" << endl;
