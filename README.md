@@ -27,6 +27,8 @@ For now, here are its installation instructions.
 
   - Do `make all install` to build.
 
+  - Do `make test` if you want to run some unit tests.
+  
   - If you have trouble getting rf_kernels to build/work, then the problem probably has
     something to do with your compiler flags (specified as part of CPP) or environment 
     variables.  Here are a few hints:
