@@ -90,7 +90,7 @@ install: librf_kernels.so
 uninstall:
 	rm -f $(LIBDIR)/librf_kernels.so
 	rm -f $(INCDIR)/rf_kernels/*.hpp $(INCDIR)/rf_kernels.hpp
-	rmdir $(INCDIR)/rf_kernels
+	if [ -d $(INCDIR)/rf_kernels ]; then rmdir $(INCDIR)/rf_kernels; fi
 
 clean:
 	rm -f $(TESTBINFILES) *~ *.o *.so *.pyc rf_kernels/*~ unittest_touchfiles/ut_*
