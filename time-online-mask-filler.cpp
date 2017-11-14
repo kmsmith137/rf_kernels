@@ -14,22 +14,30 @@ struct online_mask_filler_timing_thread : public kernel_timing_thread {
 
     virtual void thread_body() override 
     {
+	// this->intensity and this->weights arrays are already allocated by base class, but we
+	// also need an 'out' array for the output of online_mask_filler::mask_fill_and_multiply().
+	float *out = aligned_alloc<float> (nfreq * stride);
+	
 	// bonsai-like parameters
 	online_mask_filler mf(nfreq);
 	mf.v1_chunk = 32;
 	mf.var_weight = 0.01;
 	mf.w_clamp = 0.01;
 	mf.w_cutoff = 0.1;
-	mf.modify_weights = false;
-	mf.multiply_intensity_by_weights = true;
 
 	this->allocate();
+
 	this->start_timer();
-
 	for (int i = 0; i < niter; i++)
-	    mf.mask_fill(nt_chunk, intensity, stride, weights, stride);
+	    mf.mask_fill_and_multiply(nt_chunk, out, stride, intensity, stride, weights, stride);
+	this->stop_timer2("mask_fill_and_multiply");
 
-	this->stop_timer2("online_mask_filler");
+	this->start_timer();
+	for (int i = 0; i < niter; i++)
+	    mf.mask_fill_in_place(nt_chunk, intensity, stride, weights, stride);
+	this->stop_timer2("mask_fill_in_place");
+
+	free(out);
     }
 };
 
