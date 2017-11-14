@@ -90,8 +90,22 @@ inline void _write_first(float *dst, __m256 src)
 }
 
 
-template<bool multiply_intensity_by_weights, bool modify_weights>
-void _online_mask_fill(online_mask_filler &params, int nt_chunk, float *intensity, int istride, float *weights, int wstride)
+// There are two versions of the online_mask_filler kernel.
+//
+//   - mask_fill_in_place(), which modifies the input 'intensity' and 'weights' arrays in place.
+//
+//   - mask_fill_and_multiply(), which leaves the input arrays unmodified, and writes the product
+//     of the mask-filled intensity and weights arrays to the output array 'out'.
+//
+// Under the hood, both kernels are implemented by a single function _online_mask_fill() 
+// with a template argument 'in_place' to switch between the two versions. 
+//
+// Note that in the case in_place=false, the (intensity, weights) arrays are not modified,
+// even though they are not declared 'const'.  In the case in_place=true, the (out, ostride)
+// arguments are not used.
+
+template<bool in_place>
+void _online_mask_fill(online_mask_filler &params, int nt_chunk, float *out, int ostride, float *intensity, int istride, float *weights, int wstride)
 {
     __m256 var_weight = _mm256_set1_ps(params.var_weight);
     __m256 w_clamp = _mm256_set1_ps(params.w_clamp);
@@ -154,25 +168,25 @@ void _online_mask_fill(online_mask_filler &params, int nt_chunk, float *intensit
 	  i2 = _mm256_blendv_ps(i2, _mm256_mul_ps(rng.gen_floats(), rng_scale), _mm256_cmp_ps(w2, w_cutoff, _CMP_LE_OS));
 	  i3 = _mm256_blendv_ps(i3, _mm256_mul_ps(rng.gen_floats(), rng_scale), _mm256_cmp_ps(w3, w_cutoff, _CMP_LE_OS));
 
-	  if (multiply_intensity_by_weights) {
-	      i0 *= prev_w;
-	      i1 *= prev_w;
-	      i2 *= prev_w;
-	      i3 *= prev_w;
-	  }
-	  
-	  // Store the new intensity values
-	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk, i0);
-	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 8, i1);
-	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 16, i2);
-	  _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 24, i3);
+	  if (in_place) {
+	      // Store the new intensity values
+	      _mm256_storeu_ps(intensity + ifreq * istride + ichunk, i0);
+	      _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 8, i1);
+	      _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 16, i2);
+	      _mm256_storeu_ps(intensity + ifreq * istride + ichunk + 24, i3);
 
-	  if (modify_weights) {
 	      // Store the new weight values
 	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk, prev_w);
 	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk + 8, prev_w);
 	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk + 16, prev_w);
 	      _mm256_storeu_ps(weights + ifreq * wstride + ichunk + 24, prev_w);
+	  }
+	  else {
+	      // Store (intensity * weights).
+	      _mm256_storeu_ps(out + ifreq * ostride + ichunk, i0 * prev_w);
+	      _mm256_storeu_ps(out + ifreq * ostride + ichunk + 8, i1 * prev_w);
+	      _mm256_storeu_ps(out + ifreq * ostride + ichunk + 16, i2 * prev_w);
+	      _mm256_storeu_ps(out + ifreq * ostride + ichunk + 24, i3 * prev_w);
 	  }
       }
 
@@ -222,8 +236,8 @@ online_mask_filler::online_mask_filler(int nfreq_) :
 }
 
 
-// Helper for online_mask_filler::mask_fill()
-inline void _check_args(const online_mask_filler &params, int nt_chunk, float *intensity, int istride, float *weights, int wstride)
+// Helper for online_mask_filler::mask_fill_in_place()
+inline void _check_args(const online_mask_filler &params, int nt_chunk, const float *intensity, int istride, const float *weights, int wstride)
 {
     if (nt_chunk <= 0)
 	throw runtime_error("rf_kernels::online_mask_filler: expected nt_chunk > 0");
@@ -250,40 +264,41 @@ inline void _check_args(const online_mask_filler &params, int nt_chunk, float *i
 }
 
 
-// There are now four versions of the online mask filler. If overwrite_on_wt0 is true, when the running weight drops to zero, 
-// the running variance will be updated to the first successful variance estimate, instead of being restricted by the variance
-// clamp parameters. If modify_weights is true, weights will be set to the running weights and the intensity will be set to the 
-// sqrt(3 * running_var) * rng if the value was masked, or left alone if not. If modify_weights is false, the weights will not
-// be modified and the intensity will be sqrt(3 * rv) * rw * rng if masked and intensity * rw if unmasked.
+// Helper for online_mask_filler::mask_fill_and_multiply().
+inline void _check_args(const online_mask_filler &params, int nt_chunk, float *out, int ostride, const float *intensity, int istride, const float *weights, int wstride)
+{
+    _check_args(params, nt_chunk, intensity, istride, weights, wstride);
 
-// modify_weights = false is required for bonsai
-// modify_weights = true makes the most sense for rf_pipelines
+    if (out == nullptr)
+	throw runtime_error("rf_kernels::online_mask_filler: 'out' pointer is null");
+    if (abs(ostride) < nt_chunk)
+	throw runtime_error("rf_kernels::online_mask_filler: expected abs(ostride) >= nt_chunk");
+}
 
-void online_mask_filler::mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride)
+
+void online_mask_filler::mask_fill_in_place(int nt_chunk, float *intensity, int istride, float *weights, int wstride)
 {
     _check_args(*this, nt_chunk, intensity, istride, weights, wstride);
 
-    if (multiply_intensity_by_weights)
-    {
-        if (modify_weights)
-  	    _online_mask_fill<true, true> (*this, nt_chunk, intensity, istride, weights, wstride);
-        else
-	    _online_mask_fill<true, false> (*this, nt_chunk, intensity, istride, weights, wstride);
-    }
-    else
-    {
-        if (modify_weights)
-  	    _online_mask_fill<false, true> (*this, nt_chunk, intensity, istride, weights, wstride);
-        else
-	    _online_mask_fill<false, false> (*this, nt_chunk, intensity, istride, weights, wstride);
-    }
+    // In the case in_place=true, _online_mask_fill() ignores its (out, ostride) arguments.
+    _online_mask_fill<true> (*this, nt_chunk, NULL, 0, intensity, istride, weights, wstride);
+}
+
+
+void online_mask_filler::mask_fill_and_multiply(int nt_chunk, float *out, int ostride, const float *intensity, int istride, const float *weights, int wstride)
+{
+    _check_args(*this, nt_chunk, out, ostride, intensity, istride, weights, wstride);
+
+    // In the case in_place=false, _online_mask_fill() doesn't modify its (intensity, weights) arrays,
+    // but they are not declared 'const'.
+    _online_mask_fill<false> (*this, nt_chunk, out, ostride, const_cast<float *> (intensity), istride, const_cast<float *> (weights), wstride);
 }
 
 
 // ----------------------------------------------------------------------------------------------------
 
 
-void online_mask_filler::scalar_mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride)
+void online_mask_filler::scalar_mask_fill_in_place(int nt_chunk, float *intensity, int istride, float *weights, int wstride)
 {
     _check_args(*this, nt_chunk, intensity, istride, weights, wstride);
 
@@ -339,15 +354,8 @@ void online_mask_filler::scalar_mask_fill(int nt_chunk, float *intensity, int is
 		iacc[i] = (wacc[i] <= w_cutoff) ? (rn[i%8] * sqrt(3*rv)) : iacc[i];
 	    }
 	    
-	    if (multiply_intensity_by_weights) {
-		for (int i = 0; i < v1_chunk; i++)
-		    iacc[i] *= rw;
-	    }
-
-	    if (modify_weights) {
-		for (int i = 0; i < v1_chunk; i++)
-		    wacc[i] = rw;
-	    }
+	    for (int i = 0; i < v1_chunk; i++)
+		wacc[i] = rw;
 	}
 	
 	// Store running weights and var

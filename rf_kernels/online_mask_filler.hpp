@@ -28,15 +28,19 @@ struct online_mask_filler {
     float var_weight = 0.0;         // running_variance decay constant per v1_chunk
     float w_clamp = 0.0;            // change in running_weight (either positive or negative) per v1_chunk
     float w_cutoff = -1.0;          // threshold weight below which intensity is considered masked
-    bool modify_weights = true;
-    bool multiply_intensity_by_weights = false;
 
     // This is the fast kernel!
-    // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk), with strides (istide, wstride).
-    void mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride);
+    // 'intensity' and 'weights' are 2D arrays of shape (nfreq, nt_chunk), with strides (istride, wstride).
+    // Both arrays are "mask-filled" and modified in place.  (This version of the kernel is used in rf_pipelines.)
+    void mask_fill_in_place(int nt_chunk, float *intensity, int istride, float *weights, int wstride);
+
+    // This version of the kernel leaves the input 'intensity' and 'weights' arrays unmodified,
+    // and instead writes the product (mask-filled intensity) * (mask-filled weights) to its output
+    // array.  (This version of the kernel is used in bonsai.)
+    void mask_fill_and_multiply(int nt_chunk, float *out, int ostride, const float *intensity, int istride, const float *weights, int wstride);
     
-    // Slow reference version of mask_fill(), for testing.
-    void scalar_mask_fill(int nt_chunk, float *intensity, int istride, float *weights, int wstride);
+    // Slow reference version of mask_fill_in_place(), for testing.
+    void scalar_mask_fill_in_place(int nt_chunk, float *intensity, int istride, float *weights, int wstride);
 
     // Persistent state, kept between calls to mask_fill().
     // Each of these is a 1D array of length nfreq.

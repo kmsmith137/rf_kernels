@@ -80,8 +80,6 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
     params2.var_weight = params.var_weight;
     params2.w_clamp = params.w_clamp;
     params2.w_cutoff = params.w_cutoff;
-    params2.modify_weights = params.modify_weights;
-    params2.multiply_intensity_by_weights = params.multiply_intensity_by_weights;
     
     vector<float> intensity(nfreq * istride);
     vector<float> weights(nfreq * wstride);
@@ -134,8 +132,8 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
 	}
 
 	// Process away!
-	params.mask_fill(nt_chunk, &intensity[0], istride, &weights[0], wstride);
-	params2.scalar_mask_fill(nt_chunk, &intensity2[0], istride, &weights2[0], wstride);
+	params.mask_fill_in_place(nt_chunk, &intensity[0], istride, &weights[0], wstride);
+	params2.scalar_mask_fill_in_place(nt_chunk, &intensity2[0], istride, &weights2[0], wstride);
 
 	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be 
 	// helpful for debugging any future errors! So it's easy to see where things have gone wrong!
@@ -202,13 +200,9 @@ void test_filler(int nouter=100)
 	params.var_weight = uniform_rand(rng, 1.0e-3, 0.1);
 	params.w_clamp = uniform_rand(rng, 1.0e-10, 1.0);
 	params.w_cutoff = randint(rng,0,4) ? uniform_rand(rng, 0.1, 0.9) : 0.0;
-	params.modify_weights = randint(rng, 0, 2);
-	params.multiply_intensity_by_weights = randint(rng, 0, 2);
 
 #if 0
-	cout << "outer iteration " << iouter << endl
-	     << "    multiply_intensity_by_weights = " << params.multiply_intensity_by_weights << endl
-	     << "    modify_weights = " << params.modify_weights << endl;
+	cout << "outer iteration " << iouter << endl;
 #endif
 	
 	test_filler(rng, params, nt_chunk, istride, wstride, ninner);
