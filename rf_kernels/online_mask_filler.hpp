@@ -14,12 +14,23 @@ namespace rf_kernels {
 
 
 struct online_mask_filler {
+
     // Constructing an online_mask_filler is a two-step process: first call 
     // the constructor, then set values of the "tunable" parameters below.
+    //
+    // Note: The constructor initializes 'rng_state' to a seed value obtained
+    // from a std::random_device.
 
     explicit online_mask_filler(int nfreq);
 
-    const int nfreq;
+    // The copy constructor makes a "deep copy", i.e. independent copies are made 
+    // of array members such as 'running_var' or 'rng_state'.
+
+    online_mask_filler(const online_mask_filler &);
+    online_mask_filler& operator=(const online_mask_filler &);
+
+    // Don't change after construction, or you'll get segfaults!
+    int nfreq;
 
     // Tunable parameters.
     // Note that the defaults are generally invalid parameter values!
@@ -56,10 +67,10 @@ struct online_mask_filler {
     std::unique_ptr<float[]> chunk_max_weight;   // maximum weight in last chunk processed.
         
     uint64_t rng_state[8];
-    
-    // Disallow copying (since we use std::unique_ptr).
-    online_mask_filler(const online_mask_filler &) = delete;
-    online_mask_filler& operator=(const online_mask_filler &) = delete;
+
+    // Helper function for copy constructors.
+    // If new members are added, don't forget to update this!
+    void _deep_copy(const online_mask_filler &params);
 };
 
 

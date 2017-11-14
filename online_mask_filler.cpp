@@ -216,6 +216,14 @@ inline unique_ptr<float[]> zeroed_unique_ptr(ssize_t n)
     return unique_ptr<float[]> (p);
 }
 
+// Helper for online_mask_filler constructor
+inline unique_ptr<float[]> deep_copy_unique_ptr(const unique_ptr<float[]> &q, ssize_t n)
+{
+    float *p = new float[n];
+    memcpy(p, q.get(), n * sizeof(*p));
+    return unique_ptr<float[]> (p);
+}
+
 
 online_mask_filler::online_mask_filler(int nfreq_) :
     nfreq(nfreq_)
@@ -233,6 +241,38 @@ online_mask_filler::online_mask_filler(int nfreq_) :
     
     for (int i = 0; i < 8; i++)
 	this->rng_state[i] = uint64_t(rd()) + (uint64_t(rd()) << 32);
+}
+
+
+online_mask_filler::online_mask_filler(const online_mask_filler &params)
+{
+    this->_deep_copy(params);
+}
+
+
+online_mask_filler &online_mask_filler::operator=(const online_mask_filler &params)
+{
+    if (this != &params)
+	this->_deep_copy(params);
+    return *this;
+}
+
+
+void online_mask_filler::_deep_copy(const online_mask_filler &params)
+{
+    this->nfreq = params.nfreq;
+    this->v1_chunk = params.v1_chunk;
+    this->var_weight = params.var_weight;
+    this->w_clamp = params.w_clamp;
+    this->w_cutoff = params.w_cutoff;
+
+    this->running_var = deep_copy_unique_ptr(params.running_var, params.nfreq);
+    this->running_weights = deep_copy_unique_ptr(params.running_weights, params.nfreq);
+    this->running_var_denom = deep_copy_unique_ptr(params.running_var_denom, params.nfreq);
+    this->chunk_min_weight = deep_copy_unique_ptr(params.chunk_min_weight, params.nfreq);
+    this->chunk_max_weight = deep_copy_unique_ptr(params.chunk_max_weight, params.nfreq);
+
+    memcpy(this->rng_state, params.rng_state, 64);
 }
 
 
