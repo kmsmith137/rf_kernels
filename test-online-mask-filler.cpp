@@ -1,6 +1,3 @@
-// g++ -std=c++11 -Wall -O3 -L. -L$HOME/lib -lrf_kernels -march=native -o test-online-mask-filler test-online-mask-filler.cpp
-// if export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$HOME/lib
-
 #include <iostream>
 #include <cassert>
 #include <cstring>
@@ -25,8 +22,7 @@ void print_vec(float *a)
 
 inline bool equality_checker(float a, float b, float epsilon)
 {
-    // I know this isn't great, but I think it should be sufficient
-    return abs(a-b) < epsilon;
+    return fabsf(a-b) < epsilon;
 }
 
 
@@ -64,7 +60,7 @@ inline void gen_weights(std::mt19937 &rng, float *weights, float pallzero, float
 }
 
 
-void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, int istride, int wstride, int niter)
+void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, int ostride, int istride, int wstride, int niter)
 {
     // Used when randomly generating weights below.
     const float pallzero = 0.2;
@@ -73,28 +69,25 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
     assert (nt_chunk % 32 == 0);
 
     const int nfreq = params.nfreq;
-
-    // Hmm, lack of a copy constructor is awkward here..
-    online_mask_filler params2(nfreq);
-    params2.v1_chunk = params.v1_chunk;
-    params2.var_weight = params.var_weight;
-    params2.w_clamp = params.w_clamp;
-    params2.w_cutoff = params.w_cutoff;
     
-    vector<float> intensity(nfreq * istride);
-    vector<float> weights(nfreq * wstride);
-    vector<float> intensity2(nfreq * istride);
-    vector<float> weights2(nfreq * wstride);    
+    vector<float> intensity(nfreq * istride);   // mask_fill_in_place()
+    vector<float> intensity2(nfreq * istride);  // mask_fill_and_multiply()
+    vector<float> intensity3(nfreq * istride);  // scalar_mask_fill_in_place()
 
-    // As in the prng unit test, we need to ensure both random number generators are initialized with the same seed values!
-    memcpy(params2.rng_state, params.rng_state, 64);
+    vector<float> weights(nfreq * wstride);
+    vector<float> weights2(nfreq * wstride);
+    vector<float> weights3(nfreq * wstride);
+
+    vector<float> out2(nfreq * ostride);
+    
+    // Weights between 0 and 1
+    uniform_real_distribution<float> w_dis(0.0, 1.0);
+    // Variance between 0.0 and 0.02
+    uniform_real_distribution<float> var_dis(0.0, 0.02);
     
     for (int iter=0; iter<niter; iter++)
     {
         // First, we randomize the weights and intensity values
-        // We need two copies to put through each processing function and compare
-
-	// Intensities
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	    for (int it = 0; it < nt_chunk; it++)
 		intensity[ifreq*istride + it] = uniform_rand(rng);
@@ -103,75 +96,88 @@ void test_filler(std::mt19937 &rng, online_mask_filler &params, int nt_chunk, in
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	    for (int it = 0; it < nt_chunk; it += 32)
 		gen_weights(rng, &weights[ifreq*wstride + it], pallzero, params.w_cutoff);
-	
-	// Copy
+
+        // We need two copies to put through each processing function and compare
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
 	    for (int it = 0; it < nt_chunk; it++) {
 		intensity2[ifreq*istride + it] = intensity[ifreq*istride + it];
+		intensity3[ifreq*istride + it] = intensity[ifreq*istride + it];
 		weights2[ifreq*wstride + it] = weights[ifreq*wstride + it];
+		weights3[ifreq*wstride + it] = weights[ifreq*wstride + it];
 	    }
 	}
-	
-	// Weights between 0 and 1
-	uniform_real_distribution<float> w_dis(0.0, 1.0);
-	// Variance between 0.0 and 0.02
-	uniform_real_distribution<float> var_dis(0.0, 0.02);
+
+	// Note: copy constructor makes a "deep copy" (running_* fields and RNG state are copied)
+	online_mask_filler params2 = params;
+	online_mask_filler params3 = params;
+
+	// Process away!  (Parts 1+2 out of 3)
+	params.mask_fill_in_place(nt_chunk, &intensity[0], istride, &weights[0], wstride);
+	params2.mask_fill_and_multiply(nt_chunk, &out2[0], ostride, &intensity2[0], istride, &weights2[0], wstride);
+
+	// Check that mask_fill_and_multiply() didn't modify its input arrays.
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int it = 0; it < nt_chunk; it++) {
+		if (intensity2[ifreq*istride+it] != intensity3[ifreq*istride+it])
+		    throw runtime_error("online_mask_filler::mask_fill_and_multiply() modified its input intensity array");
+		if (weights2[ifreq*wstride+it] != weights3[ifreq*wstride+it])
+		    throw runtime_error("online_mask_filler::mask_fill_and_multiply() modified its input weights array");
+	    }
+	}
+
+	// Process away!  (Part 3 out of 3)
+	params3.scalar_mask_fill_in_place(nt_chunk, &intensity3[0], istride, &weights3[0], wstride);
 
 	float *running_var = params.running_var.get();
 	float *running_var2 = params2.running_var.get();
+	float *running_var3 = params3.running_var.get();
 	float *running_weights = params.running_weights.get();
 	float *running_weights2 = params2.running_weights.get();
-	
-	// Make two copies
-	for (int i=0; i<nfreq; i++)
-	{
-	    running_var[i] = var_dis(rng);
-	    running_var2[i] = running_var[i];
-	    running_weights[i] = w_dis(rng);
-	    running_weights2[i] = running_weights[i];
-	}
+	float *running_weights3 = params3.running_weights.get();
 
-	// Process away!
-	params.mask_fill_in_place(nt_chunk, &intensity[0], istride, &weights[0], wstride);
-	params2.scalar_mask_fill_in_place(nt_chunk, &intensity2[0], istride, &weights2[0], wstride);
-
-	// I realize this next bit isn't the most effecient possible way of doing this comparison, but I think this order will be 
-	// helpful for debugging any future errors! So it's easy to see where things have gone wrong!
 	for (int ifreq=0; ifreq<nfreq; ifreq++)
 	{
 	    // Check running variance
-	    if (!equality_checker(running_var[ifreq], running_var2[ifreq], 1.0e-6))
+	    if (!equality_checker(running_var[ifreq], running_var3[ifreq], 1.0e-6) || !equality_checker(running_var2[ifreq], running_var3[ifreq], 1.0e-6))
 	    {
 		cout << "Something's gone wrong! The running variances at frequency " << ifreq << " on iteration " << iter << " are unequal!" << endl;
-		cout << "Scalar output: " << running_var2[ifreq] << "\t\t Vectorized output: " << running_var[ifreq] << endl;
+		cout << "mask_fill_in_place=" << running_var[ifreq] << ", mask_fill_and_multiply=" << running_var2[ifreq] << ", scalar_mask_fill_in_place=" << running_var3[ifreq] << endl;
 		exit(1);
 	    }
 
 	    // Check running weights
-	    if (!equality_checker(running_weights[ifreq], running_weights2[ifreq], 1.0e-6))
+	    if (!equality_checker(running_weights[ifreq], running_weights3[ifreq], 1.0e-6) || !equality_checker(running_weights2[ifreq], running_weights3[ifreq], 1.0e-6))
 	    {
 		cout << "Something's gone wrong! The running weights at frequency " << ifreq << " on iteration " << iter << " are unequal!" << endl;
-		cout << "Scalar output: " << running_weights2[ifreq] << "\t\t Vectorized output: " << running_weights[ifreq] << endl;
+		cout << "mask_fill_in_place=" << running_weights[ifreq] << ", mask_fill_and_multiply=" << running_weights2[ifreq] << ", scalar_mask_fill_in_place=" << running_weights3[ifreq] << endl;
 		exit(1);
 	    }
 	    
 	    for (int i=0; i<nt_chunk; i++)
 	    {
 		// Check intensity
-		if (!equality_checker(intensity[ifreq * istride + i], intensity2[ifreq * istride + i], 1.0e-6))
+		if (!equality_checker(intensity[ifreq * istride + i], intensity3[ifreq * istride + i], 1.0e-6))
 		{ 
 		    cout << "Something has gone wrong! The intensity array produced by the scalar mask filler does not match the intensity array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
-		    cout << "Scalar output: " << intensity2[ifreq * istride + i] << "\t\t Vectorized output: " << intensity[ifreq * istride + i] << endl;
+		    cout << "Scalar output: " << intensity3[ifreq * istride + i] << "\t\t Vectorized output: " << intensity[ifreq * istride + i] << endl;
 		    exit(1);
 		}
 		
 		// Check weights
-		if (!equality_checker(weights[ifreq * wstride + i], weights2[ifreq * wstride + i], 1.0e-6))
+		if (!equality_checker(weights[ifreq * wstride + i], weights3[ifreq * wstride + i], 1.0e-6))
 		{
 		    cout << "Something has gone wrong! The weights array produced by the scalar mask filler does not match the weights array produced by the vectorized mask filler!" << endl;
 		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
-		    cout << "Scalar output: " << weights2[ifreq * wstride + i] << "\t\t Vectorized output: " << weights[ifreq * wstride + i] << endl;
+		    cout << "Scalar output: " << weights3[ifreq * wstride + i] << "\t\t Vectorized output: " << weights[ifreq * wstride + i] << endl;
+		    exit(1);
+		}
+
+		// Check output of mask_fill_and_multiply()
+		if (!equality_checker(out2[ifreq*ostride+i], intensity3[ifreq*istride+i] * weights3[ifreq*wstride+i], 1.0e-6)) {
+		    cout << "Something has gone wrong! The output of mask_fill_and_multiply() is not consistent with scalar_mask_fill_in_place()" << endl;
+		    cout << "Output terminated at time index " << i << " and frequency " << ifreq << " on iteration " << iter << endl;
+		    cout << "mask_fill_and_multiply=" << out2[ifreq*ostride+i] << ", scalar equivalent = " << (intensity3[ifreq*istride+i] * weights3[ifreq*wstride+i]) << endl;
 		    exit(1);
 		}
 	    }
@@ -191,6 +197,7 @@ void test_filler(int nouter=100)
     for (int iouter = 0; iouter < nouter; iouter++) {
 	int nfreq = randint(rng, 1, 65);
 	int nt_chunk = randint(rng, 1, 9) * 32;   // must be multiple of v1_chunk=32
+	int ostride = randint(rng, nt_chunk, 2*nt_chunk);
 	int istride = randint(rng, nt_chunk, 2*nt_chunk);
 	int wstride = randint(rng, nt_chunk, 2*nt_chunk);
 	int ninner = 100;   // Number of "inner" iterations
@@ -205,7 +212,7 @@ void test_filler(int nouter=100)
 	cout << "outer iteration " << iouter << endl;
 #endif
 	
-	test_filler(rng, params, nt_chunk, istride, wstride, ninner);
+	test_filler(rng, params, nt_chunk, ostride, istride, wstride, ninner);
     }
 
     cout << "***online_mask_filler unit test passed!" << endl;
