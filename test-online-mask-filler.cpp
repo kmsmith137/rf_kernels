@@ -224,14 +224,14 @@ inline bool test_xorshift(int niter=10000)
     for (int iter=0; iter < niter; iter++)
     {
 	// Make sure both prngs are initialized with the same random seeds
-	unsigned int rn1 = rd();
-	unsigned int rn2 = rd();
-	unsigned int rn3 = rd();
-	unsigned int rn4 = rd();
-	unsigned int rn5 = rd();
-	unsigned int rn6 = rd();
-	unsigned int rn7 = rd();
-	unsigned int rn8 = rd();
+	uint64_t rn1 = rd64(rd);
+	uint64_t rn2 = rd64(rd);
+	uint64_t rn3 = rd64(rd);
+	uint64_t rn4 = rd64(rd);
+	uint64_t rn5 = rd64(rd);
+	uint64_t rn6 = rd64(rd);
+	uint64_t rn7 = rd64(rd);
+	uint64_t rn8 = rd64(rd);
 	
 	uint64_t rng_state[8]{rn1, rn3, rn5, rn7, rn2, rn4, rn6, rn8};
 	vec_xorshift_plus a(rng_state);

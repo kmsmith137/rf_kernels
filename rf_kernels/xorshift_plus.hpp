@@ -23,6 +23,15 @@ inline bool is_aligned(const void *ptr, uintptr_t nbytes)
 }
 
 
+// Extracts 64 random bits from a random_device -- thanks Kendrick!
+inline uint64_t rd64(std::random_device &rd)
+{
+  uint32_t low32 = rd();
+  uint32_t high32 = rd();
+  return (uint64_t(high32) << 32) | uint32_t(low32);
+}
+
+
 // -------------------------------------------------------------------------------------------------
 // Class for random number generation
 // Generates eight random 32-bit floats using a vectorized implementation of xorshift+
@@ -54,8 +63,8 @@ struct vec_xorshift_plus
 	    throw std::runtime_error("Fatal: unaligned vec_xorshift_plus!  See discussion in rf_kernels.hpp");
 
         std::random_device rd;
-	s0 = _mm256_setr_epi64x(rd(), rd(), rd(), rd());
-	s1 = _mm256_setr_epi64x(rd(), rd(), rd(), rd());
+	s0 = _mm256_setr_epi64x(rd64(rd), rd64(rd), rd64(rd), rd64(rd));
+	s1 = _mm256_setr_epi64x(rd64(rd), rd64(rd), rd64(rd), rd64(rd));
     }
   
     // Initialize seeds to pre-defined values (dangerous if __m256is are being constructed on the heap!)
@@ -109,6 +118,17 @@ struct vec_xorshift_plus
 	// a prefactor of 2^(-31)
 	return _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_add_epi64(y, s1)), _mm256_set1_ps(4.6566129e-10));
     }
+
+
+    // Generate an array of size N with random numbers on (-1, 1). 
+    inline void gen_arr(float *out, int N)
+    {
+        if (N % 8 != 0 || N < 0)
+	    throw std::runtime_error("gen_arr(out, N): N must be divisible by 8 and greater than 0!");
+
+	for (int i=0; i < N; i+=8)
+	    _mm256_storeu_ps(out + i, gen_floats());
+  }
 };
 
 
@@ -132,7 +152,7 @@ struct xorshift_plus
     xorshift_plus() 
     {
         std::random_device rd;
-	seeds = {rd(), rd(), rd(), rd(), rd(), rd(), rd(), rd()};
+	seeds = {rd64(rd), rd64(rd), rd64(rd), rd64(rd), rd64(rd), rd64(rd), rd64(rd), rd64(rd)};
     };
 
   
