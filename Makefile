@@ -45,8 +45,9 @@ TESTBINFILES = \
   test-intensity-clipper \
   test-std-dev-clipper \
   test-online-mask-filler \
-  test-spline-detrender \
-  test-polynomial-detrender
+  test-polynomial-detrender \
+  test-quantize \
+  test-spline-detrender
 
 TIMEBINFILES = \
   time-downsample \
@@ -168,6 +169,9 @@ test-online-mask-filler.o: test-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/x
 test-polynomial-detrender.o: test-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
+test-quantize.o: test-quantize.cpp $(TEST_DEPS) rf_kernels/quantize.hpp
+	$(CPP) -c -o $@ $<
+
 test-spline-detrender.o: test-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
 	$(CPP) -c -o $@ $<
 
@@ -188,6 +192,9 @@ test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-polynomial-detrender: test-polynomial-detrender.o polynomial_detrender.o misc.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-quantize: test-quantize.o quantize.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-spline-detrender: test-spline-detrender.o spline_detrender.o

@@ -75,6 +75,10 @@ void quantizer::quantize(int nfreq, int nt, uint8_t *out, int ostride, const flo
     if (_unlikely(abs(ostride) < (nt*nbits)/8))
 	throw runtime_error("rf_kernels::quantizer: ostride is too small");
 
+    // Not sure whether this one is actually necessary.
+    if (_unlikely(ostride % 4))
+	throw runtime_error("rf_kernels::quantizer: expected ostride divisible by 4");
+
     if (_unlikely(abs(istride) < nt))
 	throw runtime_error("rf_kernels::quantizer: istride is too small");
 
