@@ -55,6 +55,7 @@ TIMEBINFILES = \
   time-memory-access-patterns \
   time-online-mask-filler \
   time-polynomial-detrender \
+  time-quantize \
   time-spline-detrender \
   time-std-dev-clipper \
   time-upsample
@@ -225,6 +226,9 @@ time-online-mask-filler.o: time-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/x
 time-polynomial-detrender.o: time-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp
 	$(CPP) -c -o $@ $<
 
+time-quantize.o: time-quantize.cpp $(TEST_DEPS) rf_kernels/quantize.hpp 
+	$(CPP) -c -o $@ $<
+
 time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp
 	$(CPP) -c -o $@ $<
 
@@ -245,6 +249,9 @@ time-memory-access-patterns: time-memory-access-patterns.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-online-mask-filler: time-online-mask-filler.o online_mask_filler.o unit_testing.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+time-quantize: time-quantize.o quantize.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-spline-detrender: time-spline-detrender.o unit_testing.o spline_detrender.o
