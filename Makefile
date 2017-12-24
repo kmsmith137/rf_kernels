@@ -17,6 +17,7 @@ INCFILES = \
   online_mask_filler.hpp \
   polynomial_detrender.hpp \
   polynomial_detrender_internals.hpp \
+  quantize.hpp \
   spline_detrender.hpp \
   spline_detrender_internals.hpp \
   std_dev_clipper.hpp \
@@ -33,6 +34,7 @@ OFILES = \
   misc.o \
   online_mask_filler.o \
   polynomial_detrender.o \
+  quantize.o \
   spline_detrender.o \
   std_dev_clipper.o \
   upsample.o
@@ -133,6 +135,9 @@ online_mask_filler.o: online_mask_filler.cpp $(CORE_DEPS) rf_kernels/xorshift_pl
 	$(CPP) -c -o $@ $<
 
 polynomial_detrender.o: polynomial_detrender.cpp $(CORE_DEPS) rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
+	$(CPP) -c -o $@ $<
+
+quantize.o: quantize.cpp rf_kernels/quantize.hpp rf_kernels/internals.hpp
 	$(CPP) -c -o $@ $<
 
 spline_detrender.o: spline_detrender.cpp $(CORE_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
