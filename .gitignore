@@ -19,6 +19,7 @@ time-intensity-clipper
 time-memory-access-patterns
 time-online-mask-filler
 time-polynomial-detrender
+time-quantize
 time-spline-detrender
 time-std-dev-clipper
 time-upsample
