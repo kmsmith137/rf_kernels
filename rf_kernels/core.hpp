@@ -22,6 +22,8 @@ enum axis_type {
     AXIS_NONE = 2
 };
 
+// In misc.cpp
+
 extern std::ostream &operator<<(std::ostream &os, axis_type axis);
 
 extern std::string axis_type_to_string(axis_type axis);
