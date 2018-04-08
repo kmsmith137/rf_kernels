@@ -1,0 +1,10 @@
+# Makefile.local for travis-ci build
+
+# Directory where C++ libraries will be installed
+LIBDIR=$(HOME)/chime/lib
+
+# Directory where C++ header files will be installed
+INCDIR=$(HOME)/chime/include
+
+CPP=$(CXX) -std=c++11 -pthread -fPIC -march=native -Wall -O3 -ffast-math -funroll-loops --param inline-unit-growth=10000 -I. -I$(INCDIR)
+CPP_LFLAGS= -L. -L$(LIBDIR)
