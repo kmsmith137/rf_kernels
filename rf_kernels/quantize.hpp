@@ -13,18 +13,30 @@ namespace rf_kernels {
 #endif
 
 
-struct quantizer {
+class quantizer {
+public:
     const int nbits;
-    const int kernel_size;
+    const int kernel_size;  // 256 on AVX machine, 512 on AVX-512
     
     // Currently, only nbits=1 is implemented!
+    // In this case, the "quantizer" converts a floating-point input array to a bitmask,
+    // where each output bit is 1 iff the corresponding input element is > 0.
     quantizer(int nbits);
     
-    // Output is a uint8_t array of shape (nfreq, (nt*nbits)/8).
+    // Arguments:
+    //   in: float32 array of shape (nfreq, nt)
+    //   out: uint8_t array of shape (nfreq, (nt*nbits)/8).
+    //   istride: stride of input array, in units sizeof(float), i.e. istride=nt for contiguous array
+    //   ostride: stride of output array, in units sizeof(char), i.e. ostride=nt/8 for contiguous array
+    // 
     // Caller must ensure that 'nt' is a multiple of 'kernel_size'.
-    // When nbits > 1 is implemented, this will have at least one more argument (scales).
+    // Note: when nbits > 1 is implemented, quantize() will have more arguments.
     void quantize(int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride) const;
+
+    // Slow reference kernel (for testing, or for reference when reading code).
+    void slow_reference_quantize(int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride) const;
     
+protected:
     // Function pointer to low-level kernel.
     void (*_f)(int, int, uint8_t *, int, const float *, int);
 };

@@ -1,31 +1,9 @@
+#include <simd_helpers/core.hpp>   // simd_size()
 #include "rf_kernels/quantize.hpp"
 #include "rf_kernels/unit_testing.hpp"
 
 using namespace std;
 using namespace rf_kernels;
-
-
-// -------------------------------------------------------------------------------------------------
-//
-// test_quantize
-
-
-static void reference_quantize(int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride, int nbits)
-{
-    assert(nbits == 1);
-    assert(nt % 8 == 0);
-
-    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	for (int i = 0; i < nt/8; i++) {
-	    uint8_t iout = 0;
-	    for (int j = 0; j < 8; j++)
-		if (in[ifreq*istride + 8*i + j] > 0.0f)
-		    iout |= (1 << j);
-
-	    out[ifreq*ostride + i] = iout;
-	}
-    }
-}
 
 
 // Assumes ostride, istride positive.
@@ -38,11 +16,10 @@ static void test_quantize(std::mt19937 &rng, int nfreq, int nt, int ostride, int
     for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	for (int it = 0; it < nt; it++)
 	    src[ifreq*istride + it] = randint(rng,0,4) ? uniform_rand(rng,-1.0,1.0) : 0.0;
-    
-    reference_quantize(nfreq, nt, dst1.get(), ostride, src.get(), istride, nbits);
 
     quantizer q(nbits);
-    q.quantize(nfreq, nt, dst2.get(), ostride, src.get(), istride);
+    q.quantize(nfreq, nt, dst1.get(), ostride, src.get(), istride);
+    q.slow_reference_quantize(nfreq, nt, dst2.get(), ostride, src.get(), istride);
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++)
 	for (int i = 0; i < (nt*nbits)/8; i++)
@@ -52,11 +29,7 @@ static void test_quantize(std::mt19937 &rng, int nfreq, int nt, int ostride, int
 
 static void test_quantize(std::mt19937 &rng)
 {
-#ifdef __AVX__
-    constexpr int simd_nbits = 256;
-#else
-    constexpr int simd_nbits = 128;
-#endif
+    constexpr int simd_nbits = simd_helpers::simd_size<int>() * sizeof(int) * 8;
 
     int nbits = 1;
     int nfreq = randint(rng, 1, 10);

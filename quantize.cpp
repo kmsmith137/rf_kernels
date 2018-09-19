@@ -66,7 +66,8 @@ quantizer::quantizer(int nbits_) :
 }
 
 
-void quantizer::quantize(int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride) const
+// Called by quantizer::quantize() and quantizer::slow_reference_quantize(), to check arguments.
+inline void _quantize_argument_checks(const quantizer *self, int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride)
 {
     if (_unlikely(nfreq <= 0))
 	throw runtime_error("rf_kernels::quantizer: expected nfreq > 0");
@@ -74,13 +75,13 @@ void quantizer::quantize(int nfreq, int nt, uint8_t *out, int ostride, const flo
     if (_unlikely(nt <= 0))
 	throw runtime_error("rf_kernels::quantizer: expected nt > 0");
 
-    if (_unlikely(nt % kernel_size))
-	throw runtime_error("rf_kernels::quantizer: expected nt divisible by kernel_size (=" + to_string(kernel_size) + ")");
+    if (_unlikely(nt % self->kernel_size))
+	throw runtime_error("rf_kernels::quantizer: expected nt divisible by kernel_size (=" + to_string(self->kernel_size) + ")");
 
-    if (_unlikely(abs(ostride) < (nt*nbits)/8))
+    if (_unlikely(abs(ostride) < (nt * self->nbits) / 8))
 	throw runtime_error("rf_kernels::quantizer: ostride is too small");
 
-    // Not sure whether this one is actually necessary.
+    // FIXME not sure whether this one is actually necessary.
     if (_unlikely(ostride % 4))
 	throw runtime_error("rf_kernels::quantizer: expected ostride divisible by 4");
 
@@ -88,12 +89,37 @@ void quantizer::quantize(int nfreq, int nt, uint8_t *out, int ostride, const flo
 	throw runtime_error("rf_kernels::quantizer: istride is too small");
 
     if (_unlikely(!out))
-	throw runtime_error("rf_kernels: null 'out' pointer passed to quantizer::quantize()");
+	throw runtime_error("rf_kernels::quantizer: null 'out' pointer passed to quantizer::quantize()");
 
     if (_unlikely(!in))
-	throw runtime_error("rf_kernels: null 'out' pointer passed to quantizer::quantize()");
+	throw runtime_error("rf_kernels::quantizer: null 'in' pointer passed to quantizer::quantize()");    
+}
 
+
+void quantizer::quantize(int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride) const
+{
+    _quantize_argument_checks(this, nfreq, nt, out, ostride, in, istride);
     this->_f(nfreq, nt, out, ostride, in, istride);
+}
+
+
+void quantizer::slow_reference_quantize(int nfreq, int nt, uint8_t *out, int ostride, const float *in, int istride) const
+{
+    _quantize_argument_checks(this, nfreq, nt, out, ostride, in, istride);
+
+    rf_assert(nbits == 1);
+    rf_assert(nt % 8 == 0);
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	for (int i = 0; i < nt/8; i++) {
+	    uint8_t iout = 0;
+	    for (int j = 0; j < 8; j++)
+		if (in[ifreq*istride + 8*i + j] > 0.0f)
+		    iout |= (1 << j);
+
+	    out[ifreq*ostride + i] = iout;
+	}
+    }
 }
 
 
