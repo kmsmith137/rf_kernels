@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
+#include <memory>
 
 #ifndef _RF_KERNELS_INTERNALS_HPP
 #define _RF_KERNELS_INTERNALS_HPP
