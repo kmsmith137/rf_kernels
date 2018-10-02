@@ -12,6 +12,7 @@ INCFILES = \
   downsample_internals.hpp \
   intensity_clipper.hpp \
   intensity_clipper_internals.hpp \
+  mask_counter.hpp \
   mean_rms.hpp \
   mean_rms_internals.hpp \
   online_mask_filler.hpp \
@@ -30,6 +31,7 @@ INCFILES = \
 OFILES = \
   downsample.o \
   intensity_clipper.o \
+  mask_counter.o \
   mean_rms.o \
   misc.o \
   online_mask_filler.o \
@@ -43,6 +45,7 @@ TESTBINFILES = \
   test-downsample \
   test-upsample \
   test-intensity-clipper \
+  test-mask-counter \
   test-std-dev-clipper \
   test-online-mask-filler \
   test-polynomial-detrender \
@@ -127,6 +130,9 @@ downsample.o: downsample.cpp $(CORE_DEPS) $(DS_DEPS)
 intensity_clipper.o: intensity_clipper.cpp $(CORE_DEPS) $(IC_DEPS)
 	$(CPP) -c -o $@ $<
 
+mask_counter.o: mask_counter.cpp $(CORE_DEPS) rf_kernels/mask_counter.hpp
+	$(CPP) -c -o $@ $<
+
 mean_rms.o: mean_rms.cpp $(CORE_DEPS) $(MR_DEPS)
 	$(CPP) -c -o $@ $<
 
@@ -164,6 +170,9 @@ test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp
 test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/downsample.hpp rf_kernels/mean_rms.hpp rf_kernels/intensity_clipper.hpp
 	$(CPP) -c -o $@ $<
 
+test-mask-counter.o: test-mask-counter.cpp $(TEST_DEPS) rf_kernels/mask_counter.hpp rf_kernels/internals.hpp
+	$(CPP) -c -o $@ $<
+
 test-online-mask-filler.o: test-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
@@ -187,6 +196,9 @@ test-downsample: test-downsample.o downsample.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o upsample.o downsample.o mean_rms.o misc.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-mask-counter: test-mask-counter.o mask_counter.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o

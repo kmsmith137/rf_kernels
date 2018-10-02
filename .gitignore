@@ -7,6 +7,7 @@ unittest_touchfiles
 
 test-downsample
 test-intensity-clipper
+test-mask-counter
 test-online-mask-filler
 test-polynomial-detrender
 test-quantize
