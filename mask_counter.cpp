@@ -16,219 +16,186 @@ constexpr int S = simd_size<float> ();
 
 // -------------------------------------------------------------------------------------------------
 //
-// Based on simd_helpers/quantize.hpp.
+// mask_count_without_bm(): implements mask_counter_data::mask_count(), in the case where the bitmask
+// is not being computed (mask_counter_data::out_bitmask is a null pointer).
 
 
-template<bool Tcounts>
-struct first_pass_state 
+static int mask_count_without_bm(const mask_counter_data &d)
 {
-    simd_downsampler<int,S,32,simd_bitwise_or<int,S>> ds;
-    const simd_t<int,S> c;
-    const simd_t<float,S> zero;
-    simd_t<int,S> tcounts;  // only used if Tcounts=false
+    int nfreq = d.nfreq;
+    int nt = d.nt_chunk;
+    int istride = d.istride;
 
-    first_pass_state() :
-	c(_get_qmask<S>()),  // defined in simd_helpers/quantize.hpp
-	zero(simd_t<float,S>::zero()),
-	tcounts(simd_t<int,S>::zero())
-    { }
-};
-
-
-template<int N, bool Tcounts, typename std::enable_if<(N==0),int>::type = 0>
-inline void fp_put(first_pass_state<Tcounts> &fp, const float *in)
-{ }
-
-template<int N, bool Tcounts, typename std::enable_if<(N>0),int>::type = 0>
-inline void fp_put(first_pass_state<Tcounts> &fp, const float *in)
-{ 
-    fp_put<N-1> (fp, in);
-
-    simd_t<float,S> x = simd_load<float,S> (in + (N-1)*S);
-    simd_t<int,S> y = simd_cast<int,S> (x > fp.zero);
-
-    constexpr int L = ((N-1) % (32/S)) * S;
-    simd_t<int,S> cs = fp.c << L;
-
-    fp.ds.template put<N-1> (y & cs);
-
-    if (Tcounts)
-	fp.tcounts += y;
-}
-
-
-// -------------------------------------------------------------------------------------------------
-
-
-template<bool Tcounts>
-void first_pass_with_bm(const mask_counter &mc, const mask_counter::kernel_args &args)
-{
-    uint8_t *out_2d = mc.ini_params.save_bitmask ? args.out_bitmask : mc._bm_workspace.get();
-    const int ostride = mc.ini_params.save_bitmask ? args.out_bmstride : (mc.ini_params.nt_chunk / 8);
-    const int istride = args.istride;
-    const int nfreq = mc.ini_params.nfreq;
-    const int nt8 = mc.ini_params.nt_chunk / 8;
-    
-    rf_assert(out_2d != nullptr);
-    rf_assert(mc.ini_params.nt_chunk % (32*S) == 0);
-
-    first_pass_state<Tcounts> fp;
-
-    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	const float *in_1d = args.in + ifreq * istride;
-	uint8_t *out_1d = out_2d + ifreq * ostride;
-	fp.tcounts = simd_t<int,S>::zero();
-
-	for (int j = 0; j < nt8; j += 4*S) {
-	    fp_put<32> (fp, in_1d + 8*j);
-	    simd_store(reinterpret_cast<int *> (out_1d + j), fp.ds.get());
-	}
-
-	if (Tcounts)
-	    args.out_tcounts[ifreq] = -(fp.tcounts.sum());
-    }    
-}
-
-
-void first_pass_no_bm(const mask_counter &mc, const mask_counter::kernel_args &args)
-{
-    const int istride = args.istride;
-    const int nfreq = mc.ini_params.nfreq;
-    const int nt = mc.ini_params.nt_chunk;
+    const float *in_2d = d.in;
+    int *out_fcounts = d.out_fcounts;
 
     rf_assert(nt % S == 0);
 
     simd_t<float,S> zero = simd_t<float,S>::zero();
+    simd_t<int,S> total = simd_t<int,S>::zero();
 
     for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	const float *in = args.in + ifreq * istride;
-	simd_t<int,S> counts = simd_t<int,S>::zero();
+	const float *in_1d = in_2d + ifreq * istride;
+	simd_t<int,S> subtotal = simd_t<int,S>::zero();
 
 	for (int it = 0; it < nt; it += S) {
-	    simd_t<float,S> x = simd_load<float,S> (in+it);
-	    simd_t<float,S> y = (x > zero);
-	    counts += simd_cast<int,S> (y);
+	    simd_t<float,S> x = simd_load<float,S> (in_1d + it);
+	    subtotal += simd_cast<int,S> (x > zero);
 	}
 
-	args.out_tcounts[ifreq] = -(counts.sum());
+	if (out_fcounts != nullptr)
+	    out_fcounts[ifreq] = -(subtotal.sum());
+
+	total += subtotal;
     }
+    
+    return -(total.sum());
 }
 
 
-void second_pass(const mask_counter &mc, const mask_counter::kernel_args &args)
+// -------------------------------------------------------------------------------------------------
+//
+// mask_count_with_bm(): implements mask_counter_data::mask_count(), in the case where the bitmask
+// is being computed (mask_counter_data::out_bitmask is a non-null pointer).
+//
+// The bm_state helper class is a version of the 1-bit simd_quantizer (see simd_helpers/quantize.hpp)
+// which keeps a 'subtotal' of unmasked entries.
+
+
+struct bm_state 
 {
-    return;
+    simd_downsampler<int,S,32,simd_bitwise_or<int,S>> ds;
+    const simd_t<int,S> c;
+    const simd_t<float,S> zero;
+    simd_t<int,S> subtotal;
+
+    bm_state() :
+	c(_get_qmask<S>()),  // defined in simd_helpers/quantize.hpp
+	zero(simd_t<float,S>::zero()),
+	subtotal(simd_t<int,S>::zero())
+    { }
+};
+
+
+template<int N, typename std::enable_if<(N==0),int>::type = 0>
+inline void bm_put(bm_state &bm, const float *in)
+{ }
+
+template<int N, typename std::enable_if<(N>0),int>::type = 0>
+inline void bm_put(bm_state &bm, const float *in)
+{ 
+    bm_put<N-1> (bm, in);
+
+    simd_t<float,S> x = simd_load<float,S> (in + (N-1)*S);
+    simd_t<int,S> y = simd_cast<int,S> (x > bm.zero);
+
+    constexpr int L = ((N-1) % (32/S)) * S;
+    simd_t<int,S> cs = bm.c << L;
+
+    bm.ds.template put<N-1> (y & cs);
+    bm.subtotal += y;
+}
+
+
+static int mask_count_with_bm(const mask_counter_data &d)
+{
+    int nfreq = d.nfreq;
+    int nt8 = d.nt_chunk / 8;
+    int istride = d.istride;
+    int ostride = d.out_bmstride;
+
+    const float *in_2d = d.in;
+    uint8_t *out_2d = d.out_bitmask;
+    int *out_fc = d.out_fcounts;
+    
+    rf_assert(out_2d != nullptr);
+    rf_assert(d.nt_chunk % (32*S) == 0);
+
+    bm_state bm;
+    simd_t<int,S> total = simd_t<int,S>::zero();
+
+    for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	const float *in_1d = in_2d + ifreq * istride;
+	uint8_t *out_1d = out_2d + ifreq * ostride;
+
+	bm.subtotal = simd_t<int,S>::zero();
+
+	for (int j = 0; j < nt8; j += 4*S) {
+	    bm_put<32> (bm, in_1d + 8*j);
+	    simd_store(reinterpret_cast<int *> (out_1d + j), bm.ds.get());
+	}
+
+	if (out_fc)
+	    out_fc[ifreq] = -(bm.subtotal.sum());
+
+	total += bm.subtotal;
+    }    
+
+    return -(total.sum());
 }
 
 
 // -------------------------------------------------------------------------------------------------
 
 
-mask_counter::mask_counter(const initializer &ini_params_) :
-    ini_params(ini_params_)
+void mask_counter_data::check_args() const
 {
-    if (ini_params.nfreq <= 0)
-	throw runtime_error("rf_kernels::mask_counter constructor: 'nfreq' was negative or unspecified");
-    if (ini_params.nt_chunk <= 0)
-	throw runtime_error("rf_kernels::mask_counter constructor: 'nt_chunk' was negative or unspecified");
-    if (ini_params.nt_chunk % (32*S) != 0)
-	throw runtime_error("rf_kernels::mask_counter constructor: 'nt_chunk' must be a multiple of " + to_string(32*S));
-    if (!ini_params.save_bitmask && !ini_params.save_tcounts && !ini_params.save_fcounts)
-	throw runtime_error("rf_kernels::mask_counter constructor: at least one of the flags 'save_bitmask', 'save_tcounts', 'save_fcounts' must be set");
-
-    if (!ini_params.save_bitmask && !ini_params.save_fcounts)
-	this->f_first_pass = first_pass_no_bm;
-    else if (ini_params.save_tcounts)
-	this->f_first_pass = first_pass_with_bm<true>;
-    else
-	this->f_first_pass = first_pass_with_bm<false>;
-    
-    if (!ini_params.save_bitmask && ini_params.save_fcounts)
-	this->_bm_workspace = make_sptr<uint8_t> (ini_params.nfreq * (ini_params.nt_chunk / 8));
-}
-
-
-inline void check_args(const mask_counter::initializer &cargs, const mask_counter::kernel_args &kargs)
-{
-    if (_unlikely(!kargs.in))
+    if (_unlikely(nfreq <= 0))
+	throw runtime_error("rf_kernels::mask_counter: 'nfreq' was negative or unspecified");
+    if (_unlikely(nt_chunk <= 0))
+	throw runtime_error("rf_kernels::mask_counter: 'nt_chunk' was negative or unspecified");
+    if (_unlikely(nt_chunk % (32*S) != 0))
+	throw runtime_error("rf_kernels::mask_counter: 'nt_chunk' must be a multiple of " + to_string(32*S));
+    if (_unlikely(!in))
 	throw runtime_error("rf_kernels::mask_counter: 'in' argument is a null pointer");
-    if (_unlikely(abs(kargs.istride) < cargs.nt_chunk))
+    if (_unlikely(abs(istride) < nt_chunk))
 	throw runtime_error("rf_kernels::mask_counter: 'istride' argument is uninitialized, or too small");
-    
-    if (_unlikely(cargs.save_bitmask && !kargs.out_bitmask))
-	throw runtime_error("rf_kernels::mask_counter: 'save_bitmask' flag was set at construction, but 'out_bitmask' is a null pointer");
-    if (_unlikely(!cargs.save_bitmask && kargs.out_bitmask))
-	throw runtime_error("rf_kernels::mask_counter: 'save_bitmask' flag was false at construction, but 'out_bitmask' is a non-null pointer");
-    if (_unlikely(cargs.save_bitmask && (abs(kargs.out_bmstride) < cargs.nt_chunk/8)))
+    if (_unlikely(out_bitmask && (abs(out_bmstride) < nt_chunk/8)))
 	throw runtime_error("rf_kernels::mask_counter: 'out_bmstride' argument is uninitialized, or too small");
-    
-    if (_unlikely(cargs.save_tcounts && !kargs.out_tcounts))
-	throw runtime_error("rf_kernels::mask_counter: 'save_tcounts' flag was set at construction, but 'out_tcounts' is a null pointer");
-    if (_unlikely(!cargs.save_tcounts && kargs.out_tcounts))
-	throw runtime_error("rf_kernels::mask_counter: 'save_tcounts' flag was false at construction, but 'out_tcounts' is a non-null pointer");
-
-    if (_unlikely(cargs.save_fcounts && !kargs.out_fcounts))
-	throw runtime_error("rf_kernels::mask_counter: 'save_fcounts' flag was set at construction, but 'out_fcounts' is a null pointer");
-    if (_unlikely(!cargs.save_fcounts && kargs.out_fcounts))
-	throw runtime_error("rf_kernels::mask_counter: 'save_fcounts' flag was false at construction, but 'out_fcounts' is a non-null pointer");
 }
 
 
-void mask_counter::mask_count(const kernel_args &args) const
+int mask_counter_data::mask_count() const
 {
-    check_args(ini_params, args);
-
-    this->f_first_pass(*this, args);
-    this->f_second_pass(*this, args);
+    check_args();
+    return out_bitmask ? mask_count_with_bm(*this) : mask_count_without_bm(*this);
 }
 
 
-void mask_counter::slow_reference_mask_count(const kernel_args &args) const
+int mask_counter_data::slow_reference_mask_count() const
 {
-    const int nfreq = ini_params.nfreq;
-    const int nt = ini_params.nt_chunk;
-    const int istride = args.istride;
-    const int bmstride = args.out_bmstride;
-    const float *in = args.in;
+    check_args();
 
-    uint8_t *out_bm = args.out_bitmask;
-    int *out_tc = args.out_tcounts;
-    int *out_fc = args.out_fcounts;
-
-    check_args(ini_params, args);
-
-    if (out_bm != nullptr) {
+    if (out_bitmask != nullptr) {
 	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    for (int i = 0; i < nt/8; i++) {
-		uint8_t iout = 0;
-		for (int j = 0; j < 8; j++)
-		    if (in[ifreq*istride + 8*i + j] > 0.0f)
-			iout |= (1 << j);
+	    for (int ibyte = 0; ibyte < nt_chunk/8; ibyte++) {
+		uint8_t byte = 0;
+		for (int ibit = 0; ibit < 8; ibit++)
+		    if (in[ifreq*istride + 8*ibyte + ibit] > 0.0f)
+			byte |= (1 << ibit);
 
-		out_bm[ifreq*bmstride + i] = iout;
+		out_bitmask[ifreq*out_bmstride + ibyte] = byte;
 	    }
 	}
     }
 
-    if (out_tc != nullptr) {
-	for (int it = 0; it < nt; it++) {
-	    int count = 0;
-	    for (int ifreq = 0; ifreq < nfreq; ifreq++)
+    if (out_fcounts != nullptr) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    int subtotal = 0;
+	    for (int it = 0; it < nt_chunk; it++)
 		if (in[ifreq*istride + it] > 0.0f)
-		    count++;
-	    out_tc[it] = count;
+		    subtotal++;
+	    out_fcounts[ifreq] = subtotal;
 	}
     }
 
-    if (out_fc != nullptr) {
-	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
-	    int count = 0;
-	    for (int it = 0; it < nt; it++)
-		if (in[ifreq*istride + it] > 0.0f)
-		    count++;
-	    out_fc[ifreq] = count;
-	}
-    }
+    int total = 0;
+    for (int ifreq = 0; ifreq < nfreq; ifreq++)
+	for (int it = 0; it < nt_chunk; it++)
+	    if (in[ifreq*istride + it] > 0.0f)
+		total++;
+
+    return total;
 }
 
 

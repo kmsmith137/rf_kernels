@@ -14,39 +14,26 @@ namespace rf_kernels {
 #endif
 
 
-class mask_counter {
-public:
-    struct initializer {
-	int nfreq = 0;
-	int nt_chunk = 0;
-	bool save_bitmask = false;   // save 2d array indexed by (frequency, time)?
-	bool save_tcounts = false;   // save 1d array indexed by time?
-	bool save_fcounts = false;   // save 1d array indexed by frequency?
-    };
+struct mask_counter_data {
+    int nfreq = 0;
+    int nt_chunk = 0;
 
-    struct kernel_args {
-	const float *in = nullptr;   // 2d array of shape (nfreq, nt_chunk)
-	int istride = 0;             // stride in input array (=nt_chunk for contiguous array)
+    const float *in = nullptr;   // 2d array of shape (nfreq, nt_chunk)
+    int istride = 0;             // stride in input array (=nt_chunk for contiguous array)
 
-	uint8_t *out_bitmask = nullptr;   // 2d array of shape (nfreq, nt_chunk/8)
-	int *out_tcounts = nullptr;       // 1d array of length nt_chunk
-	int *out_fcounts = nullptr;       // 1d array of length nfreq
-	int out_bmstride = 0;             // stride in bitmask array (=nt_chunk/8 for contiguous array)
-    };
+    // If the out_bitmask and/or out_fcounts pointers are null, then
+    // the bitmask/fcounts will not be computed by the kernel.
 
-    const initializer ini_params;
+    uint8_t *out_bitmask = nullptr;   // 2d array of shape (nfreq, nt_chunk/8)
+    int *out_fcounts = nullptr;       // 1d array of length nfreq
+    int out_bmstride = 0;             // stride in bitmask array (=nt_chunk/8 for contiguous array)
 
-    mask_counter(const initializer &ini_params);
-    
-    void mask_count(const kernel_args &args) const;
+    // The return value is the total number of unmasked samples.
+    int mask_count() const;
+    int slow_reference_mask_count() const;
 
-    void slow_reference_mask_count(const kernel_args &args) const;
-
-    std::shared_ptr<uint8_t> _bm_workspace;
-
-protected:
-    void (*f_first_pass)(const mask_counter &, const kernel_args &) = nullptr;
-    void (*f_second_pass)(const mask_counter &, const kernel_args &) = nullptr;
+    // Throws verbose exception on failure.
+    void check_args() const;
 };
 
 
