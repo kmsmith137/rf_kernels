@@ -10,7 +10,7 @@ using namespace rf_kernels;
 // Caller has initialized all integer members of 'd', but pointer members are null pointers.
 static void test_mask_counter(std::mt19937 &rng, const mask_counter_data &d, bool have_bitmask, bool have_fcounts)
 {
-#if 1
+#if 0
     cout << "test_mask_counter: nfreq=" << d.nfreq
 	 << ", nt_chunk=" << d.nt_chunk
 	 << ", istride=" << d.istride
@@ -45,14 +45,29 @@ static void test_mask_counter(std::mt19937 &rng, const mask_counter_data &d, boo
     d2.out_fcounts = fc2.get();
     
     int total1 = d1.mask_count();
-    int total2 = d1.slow_reference_mask_count();
+    int total2 = d2.slow_reference_mask_count();
+
+#if 0
+    if (have_bitmask) {
+	for (int ifreq = 0; ifreq < nfreq; ifreq++) {
+	    for (int ibyte = 0; ibyte < nt/8; ibyte++) {
+		for (int ibit = 0; ibit < 8; ibit++) {
+		    cout << "    ifreq=" << ifreq << ", ibyte=" << ibyte << ", ibit=" << ibit
+			 << ": bm1=" << ((bm1[ifreq*ostride+ibyte] & (1 << ibit)) != 0)
+			 << ", bm2=" << ((bm2[ifreq*ostride+ibyte] & (1 << ibit)) != 0)
+			 << endl;
+		}
+	    }
+	}
+    }
+#endif
 
     rf_assert(total1 == total2);
 
     if (have_bitmask) {
 	for (int ifreq = 0; ifreq < nfreq; ifreq++)
-	    for (int it = 0; it < nt; it++)
-		rf_assert(bm1[ifreq*ostride+it] == bm2[ifreq*ostride+it]);
+	    for (int ibyte = 0; ibyte < nt/8; ibyte++)
+		rf_assert(bm1[ifreq*ostride+ibyte] == bm2[ifreq*ostride+ibyte]);
     }
 
     if (have_fcounts) {
@@ -67,7 +82,7 @@ static void test_mask_counter(std::mt19937 &rng)
     constexpr int S = simd_helpers::simd_size<float>();
 
     mask_counter_data d;
-    d.nfreq = randint(rng, 1, 10);
+    d.nfreq = randint(rng, 1, 20);
     d.nt_chunk = (32*S) * randint(rng, 1, 10);
     d.istride = randint(rng, d.nt_chunk, 2*d.nt_chunk);
     d.out_bmstride = randint(rng, d.nt_chunk/8, d.nt_chunk/4);
@@ -81,10 +96,9 @@ static void test_mask_counter(std::mt19937 &rng)
 
 int main(int argc, char **argv)
 {
-    // std::random_device rd;
-    // std::mt19937 rng(rd());
-    std::mt19937 rng(23); // XXXXXX
-
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    
     cout << "test-mask-counter: start" << endl;
 
     for (int iter = 0; iter < 1000; iter++)
