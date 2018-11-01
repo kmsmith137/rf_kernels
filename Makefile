@@ -12,11 +12,13 @@ INCFILES = \
   downsample_internals.hpp \
   intensity_clipper.hpp \
   intensity_clipper_internals.hpp \
+  mask_counter.hpp \
   mean_rms.hpp \
   mean_rms_internals.hpp \
   online_mask_filler.hpp \
   polynomial_detrender.hpp \
   polynomial_detrender_internals.hpp \
+  quantize.hpp \
   spline_detrender.hpp \
   spline_detrender_internals.hpp \
   std_dev_clipper.hpp \
@@ -29,10 +31,12 @@ INCFILES = \
 OFILES = \
   downsample.o \
   intensity_clipper.o \
+  mask_counter.o \
   mean_rms.o \
   misc.o \
   online_mask_filler.o \
   polynomial_detrender.o \
+  quantize.o \
   spline_detrender.o \
   std_dev_clipper.o \
   upsample.o
@@ -41,10 +45,12 @@ TESTBINFILES = \
   test-downsample \
   test-upsample \
   test-intensity-clipper \
+  test-mask-counter \
   test-std-dev-clipper \
   test-online-mask-filler \
-  test-spline-detrender \
-  test-polynomial-detrender
+  test-polynomial-detrender \
+  test-quantize \
+  test-spline-detrender
 
 TIMEBINFILES = \
   time-downsample \
@@ -52,6 +58,7 @@ TIMEBINFILES = \
   time-memory-access-patterns \
   time-online-mask-filler \
   time-polynomial-detrender \
+  time-quantize \
   time-spline-detrender \
   time-std-dev-clipper \
   time-upsample
@@ -123,6 +130,9 @@ downsample.o: downsample.cpp $(CORE_DEPS) $(DS_DEPS)
 intensity_clipper.o: intensity_clipper.cpp $(CORE_DEPS) $(IC_DEPS)
 	$(CPP) -c -o $@ $<
 
+mask_counter.o: mask_counter.cpp $(CORE_DEPS) rf_kernels/mask_counter.hpp
+	$(CPP) -c -o $@ $<
+
 mean_rms.o: mean_rms.cpp $(CORE_DEPS) $(MR_DEPS)
 	$(CPP) -c -o $@ $<
 
@@ -133,6 +143,9 @@ online_mask_filler.o: online_mask_filler.cpp $(CORE_DEPS) rf_kernels/xorshift_pl
 	$(CPP) -c -o $@ $<
 
 polynomial_detrender.o: polynomial_detrender.cpp $(CORE_DEPS) rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
+	$(CPP) -c -o $@ $<
+
+quantize.o: quantize.cpp rf_kernels/quantize.hpp rf_kernels/internals.hpp
 	$(CPP) -c -o $@ $<
 
 spline_detrender.o: spline_detrender.cpp $(CORE_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
@@ -157,10 +170,16 @@ test-downsample.o: test-downsample.cpp $(TEST_DEPS) rf_kernels/downsample.hpp
 test-intensity-clipper.o: test-intensity-clipper.cpp $(TEST_DEPS) rf_kernels/upsample.hpp rf_kernels/downsample.hpp rf_kernels/mean_rms.hpp rf_kernels/intensity_clipper.hpp
 	$(CPP) -c -o $@ $<
 
+test-mask-counter.o: test-mask-counter.cpp $(TEST_DEPS) rf_kernels/mask_counter.hpp rf_kernels/internals.hpp
+	$(CPP) -c -o $@ $<
+
 test-online-mask-filler.o: test-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/xorshift_plus.hpp rf_kernels/online_mask_filler.hpp
 	$(CPP) -c -o $@ $<
 
 test-polynomial-detrender.o: test-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp rf_kernels/polynomial_detrender_internals.hpp
+	$(CPP) -c -o $@ $<
+
+test-quantize.o: test-quantize.cpp $(TEST_DEPS) rf_kernels/quantize.hpp
 	$(CPP) -c -o $@ $<
 
 test-spline-detrender.o: test-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp rf_kernels/spline_detrender_internals.hpp
@@ -179,10 +198,16 @@ test-downsample: test-downsample.o downsample.o
 test-intensity-clipper: test-intensity-clipper.o intensity_clipper.o upsample.o downsample.o mean_rms.o misc.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
+test-mask-counter: test-mask-counter.o mask_counter.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
 test-online-mask-filler: test-online-mask-filler.o online_mask_filler.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-polynomial-detrender: test-polynomial-detrender.o polynomial_detrender.o misc.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+test-quantize: test-quantize.o quantize.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 test-spline-detrender: test-spline-detrender.o spline_detrender.o
@@ -213,6 +238,9 @@ time-online-mask-filler.o: time-online-mask-filler.cpp $(TEST_DEPS) rf_kernels/x
 time-polynomial-detrender.o: time-polynomial-detrender.cpp $(TEST_DEPS) rf_kernels/polynomial_detrender.hpp
 	$(CPP) -c -o $@ $<
 
+time-quantize.o: time-quantize.cpp $(TEST_DEPS) rf_kernels/quantize.hpp 
+	$(CPP) -c -o $@ $<
+
 time-spline-detrender.o: time-spline-detrender.cpp $(TEST_DEPS) rf_kernels/spline_detrender.hpp
 	$(CPP) -c -o $@ $<
 
@@ -233,6 +261,9 @@ time-memory-access-patterns: time-memory-access-patterns.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-online-mask-filler: time-online-mask-filler.o online_mask_filler.o unit_testing.o
+	$(CPP) $(CPP_LFLAGS) -o $@ $^
+
+time-quantize: time-quantize.o quantize.o unit_testing.o
 	$(CPP) $(CPP_LFLAGS) -o $@ $^
 
 time-spline-detrender: time-spline-detrender.o unit_testing.o spline_detrender.o

@@ -13,6 +13,7 @@
 #include "rf_kernels/mean_rms.hpp"
 #include "rf_kernels/online_mask_filler.hpp"
 #include "rf_kernels/polynomial_detrender.hpp"
+#include "rf_kernels/quantize.hpp"
 #include "rf_kernels/spline_detrender.hpp"
 #include "rf_kernels/std_dev_clipper.hpp"
 #include "rf_kernels/upsample.hpp"

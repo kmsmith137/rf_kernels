@@ -22,11 +22,13 @@ enum axis_type {
     AXIS_NONE = 2
 };
 
+// In misc.cpp
+
 extern std::ostream &operator<<(std::ostream &os, axis_type axis);
 
 extern std::string axis_type_to_string(axis_type axis);
 
-extern axis_type axis_type_from_string(const std::string &s, const char *where="string");
+extern axis_type axis_type_from_string(const std::string &s, const char *where=nullptr);
 
 
 }  // namespace rf_kernels

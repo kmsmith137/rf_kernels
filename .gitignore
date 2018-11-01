@@ -7,8 +7,10 @@ unittest_touchfiles
 
 test-downsample
 test-intensity-clipper
+test-mask-counter
 test-online-mask-filler
 test-polynomial-detrender
+test-quantize
 test-spline-detrender
 test-std-dev-clipper
 test-upsample
@@ -18,6 +20,7 @@ time-intensity-clipper
 time-memory-access-patterns
 time-online-mask-filler
 time-polynomial-detrender
+time-quantize
 time-spline-detrender
 time-std-dev-clipper
 time-upsample

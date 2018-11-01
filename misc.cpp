@@ -39,7 +39,10 @@ axis_type axis_type_from_string(const string &s, const char *where)
     if (s == "AXIS_NONE")
 	return AXIS_NONE;
 
-    throw runtime_error("rf_kernels: " + string(where) + " '" + s + "' is not an axis_type as expected");
+    if (!where)
+	where = "rf_kernels";
+
+    throw runtime_error(where + string(": string '") + s + "' is not an axis_type as expected");
 }
 
 

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
+#include <memory>
 
 #ifndef _RF_KERNELS_INTERNALS_HPP
 #define _RF_KERNELS_INTERNALS_HPP
@@ -37,7 +38,7 @@ namespace rf_kernels {
 
 // We align to 128 bytes by default (size of an L3 cache line "pair")
 template<typename T>
-inline T *aligned_alloc(size_t nelts, ssize_t nalign=128)
+inline T *aligned_alloc(size_t nelts, ssize_t nalign=128, bool zero=true)
 {
     rf_assert(nelts >= 0);
     rf_assert(nalign > 0);
@@ -49,7 +50,9 @@ inline T *aligned_alloc(size_t nelts, ssize_t nalign=128)
     if (posix_memalign(&p, nalign, nelts * sizeof(T)) != 0)
 	throw std::runtime_error("couldn't allocate memory");
 
-    memset(p, 0, nelts * sizeof(T));
+    if (zero)
+	memset(p, 0, nelts * sizeof(T));
+
     return reinterpret_cast<T *> (p);
 }
 
@@ -60,6 +63,41 @@ inline ssize_t _align(ssize_t nbytes, ssize_t nalign=128)
     rf_assert(nbytes >= 0);
     rf_assert(nalign > 0);
     return ((nbytes + nalign - 1) / nalign) * nalign;
+}
+
+
+// uptr<T> usage:
+//
+//   uptr<float> p = make_uptr<float> (nelts);
+
+struct uptr_deleter {
+    inline void operator()(const void *p) { free(const_cast<void *> (p)); }
+};
+
+template<typename T>
+using uptr = std::unique_ptr<T[], uptr_deleter>;
+
+template<typename T>
+inline uptr<T> make_uptr(size_t nelts, size_t nalign=128, bool zero=true)
+{
+    T *p = aligned_alloc<T> (nelts, nalign, zero);
+    return uptr<T> (p);
+}
+
+template<typename T>
+inline std::shared_ptr<T> make_sptr(size_t nelts, size_t nalign=128, bool zero=true)
+{
+    T *p = aligned_alloc<T> (nelts, nalign, zero);
+    return std::shared_ptr<T> (p, free);
+}
+
+
+// -------------------------------------------------------------------------------------------------
+
+
+inline bool iff(bool a, bool b)
+{
+    return (a && b) || (!a && !b);
 }
 
 template<typename T>
