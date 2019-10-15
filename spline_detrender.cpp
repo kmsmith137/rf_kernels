@@ -78,7 +78,7 @@ spline_detrender::~spline_detrender()
 }
 
 
-void spline_detrender::detrend(int nt_chunk, float *intensity, int istride, const float *weights, int wstride, float* save_coeffs)
+void spline_detrender::detrend(int nt_chunk, float *intensity, int istride, const float *weights, int wstride, float* save_coeffs, int cstride)
 {
     if (nt_chunk <= 0)
 	throw runtime_error("rf_kernels::spline_detrender: nt_chunk must be > 0");
@@ -100,7 +100,10 @@ void spline_detrender::detrend(int nt_chunk, float *intensity, int istride, cons
 
         if (save_coeffs) {
             int ncoeffs = (nbins+1)*2;
-            memcpy(save_coeffs + it*ncoeffs, coeffs, ncoeffs * 8);
+            for (int j=0; j<ncoeffs; j++)
+                memcpy(save_coeffs + j*cstride + it,
+                       coeffs + j*8,
+                       8 * sizeof(float));
         }
     }
 }

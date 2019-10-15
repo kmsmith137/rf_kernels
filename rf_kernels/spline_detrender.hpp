@@ -29,7 +29,7 @@ struct spline_detrender {
     spline_detrender(int nfreq, int nbins, float epsilon=3.0e-4);
     ~spline_detrender();
 
-    void detrend(int nt_chunk, float *intensity, int istride, const float *weights, int wstride, float *save_coeffs = nullptr);
+    void detrend(int nt_chunk, float *intensity, int istride, const float *weights, int wstride, float *save_coeffs = nullptr, int cstride=0);
 
     int *bin_delim = nullptr;           // length (nbins+1)
     float *poly_vals = nullptr;         // length (nfreq * 4)
