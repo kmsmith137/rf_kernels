@@ -25,11 +25,11 @@ struct polynomial_detrender {
 
     // Note that the weights are not 'const' (in constrast to spline_detrender).
     // This is because the polynomial_detrender masks regions where the fit is poorly conditioned.
-    void detrend(int nfreq, int nt, float *intensity, int istride, float *weights, int wstride, double epsilon);
+    void detrend(int nfreq, int nt, float *intensity, int istride, float *weights, int wstride, double epsilon, float* coeffs=nullptr);
     
     // Function pointer to low-level kernel
     // Usage: _f(nfreq, nt, intensity, istride, weights, wstride, epsilon)    
-    void (*_f)(int, int, float *, int, float *, int, double) = nullptr;
+    void (*_f)(int, int, float *, int, float *, int, double, float *) = nullptr;
 };
 
 

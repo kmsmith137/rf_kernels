@@ -133,7 +133,7 @@ inline void _kernel_detrend_t_pass2(T *ivec, int nt, const simd_ntuple<T,S,N> &c
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2)
+inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2, T *coeffs=nullptr)
 {
     // Caller should have asserted this already, but rechecking here should have negligible overhead
     if (_unlikely((nt % S) != 0))
@@ -159,6 +159,9 @@ inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *w
 	// Case 2: Cholesky factorization is numerically stable, polynomial fitting can be performed
 	xmat.solve_lower_in_place(xvec);
 	xmat.solve_upper_in_place(xvec);
+
+        if (coeffs)
+            xvec.storeu(coeffs + N*ifreq);
 
 	_kernel_detrend_t_pass2(ivec, nt, xvec);
     }
@@ -239,7 +242,7 @@ inline void _kernel_colzero_partial(T *weights, int nfreq, int wstride, simd_t<i
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2)
+inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2, T *coeffs=nullptr)
 {
     // Caller should have asserted this already, but rechecking here should have negligible overhead
     if (_unlikely((nt % S) != 0))
@@ -268,7 +271,10 @@ inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *w
 
 	xmat.solve_lower_in_place(xvec);
 	xmat.solve_upper_in_place(xvec);
-	
+
+        if (coeffs)
+            xvec.storeu(coeffs + N*it);
+
 	_kernel_detrend_f_pass2(ivec, nfreq, xvec, istride);
 
 	if (flags.is_all_ones())
