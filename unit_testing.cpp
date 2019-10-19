@@ -2,6 +2,7 @@
 #include <cstring>
 #include <climits>
 #include <unistd.h>
+#include <functional>
 
 #include "rf_kernels/core.hpp"
 #include "rf_kernels/internals.hpp"
