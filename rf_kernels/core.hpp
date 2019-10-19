@@ -5,6 +5,7 @@
 
 #include <string>
 #include <iostream>
+#include <functional>
 
 #if (__cplusplus < 201103) && !defined(__GXX_EXPERIMENTAL_CXX0X__)
 #error "This source file needs to be compiled with C++11 support (g++ -std=c++11)"
