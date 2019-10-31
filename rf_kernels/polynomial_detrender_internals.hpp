@@ -160,8 +160,33 @@ inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *w
 	xmat.solve_lower_in_place(xvec);
 	xmat.solve_upper_in_place(xvec);
 
+        // C[i*S + j] equal for all j
+        // ie, all SIMD registers have the same value.
+        // S elements are contiguous
+        // xvec.x is first/last element in tuple.
+        // simd_t x:
+        //f = x.extract<0>();
+        //f = x.template extract<0>();
+        {
+            T C[N*S];
+            xvec.storeu(C);
+            std::cout << std::endl;
+            std::cout << "N=" << N << ", S=" << S << std::endl;
+            for (int i=0; i<N; i++)
+                for (int j=0; j<S; j++)
+                    std::cout << "Coeff[i=" << i << ", j=" << j << "] = " << C[i*S + j] << std::endl;
+
+            T V[N];
+            std::cout << std::endl;
+            for (int i=0; i<N; i++)
+                std::cout << "V[i=" << i << "] = " << V[i] << std::endl;
+        }
+        
         if (coeffs)
-            xvec.storeu(coeffs + N*ifreq);
+            // the xvec tuple has all S simd elements containing the same value
+            // -- N=0, S=* contains coefficient 0, N=1, S=* contains c_1, etc.
+            // Just pull out the S=0 values.
+            xvec.template vextract<0>(coeffs + N*ifreq);
 
 	_kernel_detrend_t_pass2(ivec, nt, xvec);
     }
