@@ -279,6 +279,9 @@ inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *w
 	xmat.solve_upper_in_place(xvec);
 
         if (coeffs)
+            // This stores N*S elements; note that 'it' steps by S.
+            // FIXME -- this ordering is probably not what you want!  Probably need to do, like,
+            // a set of vextracts with strides and stuff!
             xvec.storeu(coeffs + N*it);
 
 	_kernel_detrend_f_pass2(ivec, nfreq, xvec, istride);
