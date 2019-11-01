@@ -74,7 +74,7 @@ inline void _kernel_detrend_accum_mv(simd_trimatrix<T,S,N> &outm, simd_ntuple<T,
 
 // -------------------------------------------------------------------------------------------------
 //
-// _kernel_detrend_t<T,S,N> (nfreq, nt, intensity, istride, weights, wstride, epsilon)
+// _kernel_detrend_t<T,S,N> (nfreq, nt, intensity, istride, weights, wstride, epsilon, save_coeffs)
 //
 // Detrend along time (=fastest varying) axis of 2D strided array.
 // Note: the degree of the polynomial fit is (N-1), not N!

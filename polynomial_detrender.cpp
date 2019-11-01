@@ -37,7 +37,7 @@ namespace polynomial_detrender_kernel_table {
 }; // pacify emacs c-mode
 #endif
 
-// Usage: kernel(nfreq, nt, intensity, istride, weights, wstride, epsilon)
+// Usage: kernel(nfreq, nt, intensity, istride, weights, wstride, epsilon, save_coeffs)
 using kernel_t = void (*)(int, int, float *, int, float *, int, double, float *);
  
 // (axis, polydeg) -> kernel
