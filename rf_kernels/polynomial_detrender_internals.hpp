@@ -133,7 +133,7 @@ inline void _kernel_detrend_t_pass2(T *ivec, int nt, const simd_ntuple<T,S,N> &c
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2, T *coeffs=nullptr)
+inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2, T *save_coeffs=nullptr)
 {
     // Caller should have asserted this already, but rechecking here should have negligible overhead
     if (_unlikely((nt % S) != 0))
@@ -160,14 +160,14 @@ inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *w
 	xmat.solve_lower_in_place(xvec);
 	xmat.solve_upper_in_place(xvec);
 
-        if (coeffs)
+        if (save_coeffs)
             // the xvec tuple has all S simd elements containing the same value
             // -- N=0, S=* contains coefficient 0, N=1, S=* contains c_1, etc.
             // ie, if you do:  T C[N*S];
             //                 xvec.storeu(C);
             // then C[i*S + j] equal for all j.
             // Just pull out the S=0 values, ie the values C[:,0]
-            xvec.template vextract<0>(coeffs + N*ifreq);
+            xvec.template vextract<0>(save_coeffs + N*ifreq);
 
 	_kernel_detrend_t_pass2(ivec, nt, xvec);
     }
@@ -176,7 +176,7 @@ inline void _kernel_detrend_t(int nfreq, int nt, T *intensity, int istride, T *w
 
 // -------------------------------------------------------------------------------------------------
 //
-// _kernel_detrend_f<T,S,N> (nfreq, nt, intensity, istride, weights, wstride, epsilon)
+// _kernel_detrend_f<T,S,N> (nfreq, nt, intensity, istride, weights, wstride, epsilon, save_coeffs)
 //
 // Detrend along frequency (=slowest varying) axis of 2D strided array.
 // Note: the degree of the polynomial fit is (N-1), not N!
@@ -248,7 +248,7 @@ inline void _kernel_colzero_partial(T *weights, int nfreq, int wstride, simd_t<i
 
 
 template<typename T, int S, int N>
-inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2, T *coeffs=nullptr)
+inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *weights, int wstride, double epsilon=1.0e-2, T *save_coeffs=nullptr)
 {
     // Caller should have asserted this already, but rechecking here should have negligible overhead
     if (_unlikely((nt % S) != 0))
@@ -278,11 +278,9 @@ inline void _kernel_detrend_f(int nfreq, int nt, T *intensity, int istride, T *w
 	xmat.solve_lower_in_place(xvec);
 	xmat.solve_upper_in_place(xvec);
 
-        if (coeffs)
-            // This stores N*S elements; note that 'it' steps by S.
-            // FIXME -- this ordering is probably not what you want!  Probably need to do, like,
-            // a set of vextracts with strides and stuff!
-            xvec.storeu(coeffs + N*it);
+        if (save_coeffs)
+            // transpose of xvec.storeu
+            xvec.vextract_all(save_coeffs + N*it);
 
 	_kernel_detrend_f_pass2(ivec, nfreq, xvec, istride);
 
