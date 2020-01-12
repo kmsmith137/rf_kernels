@@ -111,14 +111,14 @@ int main(int argc, char **argv)
     std::random_device rd;
     std::mt19937 rng(rd());
 
-    cout << "test_quantize: start" << endl;
+    cout << "test_quantizer: start" << endl;
 
     for (int iter = 0; iter < 1000; iter++) {
 	test_quantize(rng);
 	test_apply_bitmask(rng);
     }
 
-    cout << "test_quantize: pass" << endl;
+    cout << "test_quantizer: pass" << endl;
     return 0;
 }
 

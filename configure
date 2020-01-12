@@ -47,7 +47,7 @@ cpp_unit_tests = [
     'test-std-dev-clipper.cpp',
     'test-online-mask-filler.cpp',
     'test-polynomial-detrender.cpp',
-    'test-quantize.cpp',
+    'test-quantizer.cpp',
     'test-spline-detrender.cpp'
 ]
 
