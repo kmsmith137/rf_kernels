@@ -18,6 +18,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <sys/time.h>
+#include <functional>
 #include <condition_variable>
 
 namespace rf_kernels {
