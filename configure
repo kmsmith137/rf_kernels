@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+hpp_files = [
+    'rf_kernels.hpp',
+    'rf_kernels/core.hpp',
+    'rf_kernels/internals.hpp',
+    'rf_kernels/downsample.hpp',
+    'rf_kernels/downsample_internals.hpp',
+    'rf_kernels/intensity_clipper.hpp',
+    'rf_kernels/intensity_clipper_internals.hpp',
+    'rf_kernels/mask_counter.hpp',
+    'rf_kernels/mean_rms.hpp',
+    'rf_kernels/mean_rms_internals.hpp',
+    'rf_kernels/online_mask_filler.hpp',
+    'rf_kernels/polynomial_detrender.hpp',
+    'rf_kernels/polynomial_detrender_internals.hpp',
+    'rf_kernels/quantize.hpp',
+    'rf_kernels/spline_detrender.hpp',
+    'rf_kernels/spline_detrender_internals.hpp',
+    'rf_kernels/std_dev_clipper.hpp',
+    'rf_kernels/std_dev_clipper_internals.hpp',
+    # 'rf_kernels/unit_testing.hpp',
+    'rf_kernels/upsample.hpp',
+    'rf_kernels/upsample_internals.hpp',
+    'rf_kernels/xorshift_plus.hpp'
+]
+
+cpp_core_files = [
+    'downsample.cpp',
+    'intensity_clipper.cpp',
+    'mask_counter.cpp',
+    'mean_rms.cpp',
+    'misc.cpp',
+    'online_mask_filler.cpp',
+    'polynomial_detrender.cpp',
+    'quantize.cpp',
+    'spline_detrender.cpp',
+    'std_dev_clipper.cpp',
+    'upsample.cpp'
+]
+
+cpp_unit_tests = [
+    'test-downsample.cpp',
+    'test-upsample.cpp',
+    'test-intensity-clipper.cpp',
+    'test-mask-counter.cpp',
+    'test-std-dev-clipper.cpp',
+    'test-online-mask-filler.cpp',
+    'test-polynomial-detrender.cpp',
+    'test-quantize.cpp',
+    'test-spline-detrender.cpp'
+]
+
+cpp_timing_programs = [
+    'time-downsample.cpp',
+    'time-intensity-clipper.cpp',
+    'time-memory-access-patterns.cpp',
+    'time-online-mask-filler.cpp',
+    'time-polynomial-detrender.cpp',
+    'time-quantize.cpp',
+    'time-spline-detrender.cpp',
+    'time-std-dev-clipper.cpp',
+    'time-upsample.cpp'
+]
+
+
+####################################################################################################
+
+
+import build_helpers
+
+# If called recursively in superbuild, a global persistent ConfigureScript will be returned.
+cs = build_helpers.get_global_configure_script()
+
+# Prerequisites.
+cs.configure_install_directories(bin=False, inc=True, lib=True, py=False)
+cs.configure_cpp('-std=c++11 -fPIC -Wall -Wno-strict-aliasing -O3 -march=native -ffast-math -funroll-loops --param inline-unit-growth=10000')
+
+# Install .hpp header files.
+cs.install_cpp_headers(hpp_files)
+
+# C++ library
+cs.make_cpp_library(libname='rf_kernels', sources=cpp_core_files, install=True)
+
+# Unit tests.
+for cpp_filename in cpp_unit_tests:
+    cs.make_binary(sources=[cpp_filename], libraries=['rf_kernels'], test=True, install=False)
+
+# Timing executables.  Note addition of unit_testing.cpp here.
+for cpp_filename in cpp_timing_programs:
+    cs.make_binary(sources=[cpp_filename,'unit_testing.cpp'], libraries=['rf_kernels'], test=False, install=False)
+
+# If called recursively in superbuild, write_output_files() will not be called here.
+if __name__ == '__main__':
+    cs.write_output_files()
