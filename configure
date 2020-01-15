@@ -71,16 +71,18 @@ import build_helpers
 
 # If called recursively in superbuild, a global persistent ConfigureScript will be returned.
 cs = build_helpers.get_global_configure_script()
-
-# Prerequisites.
 cs.configure_install_directories(bin=False, inc=True, lib=True, py=False)
 cs.configure_cpp('-std=c++11 -fPIC -Wall -Wno-strict-aliasing -O3 -march=native -ffast-math -funroll-loops --param inline-unit-growth=10000')
+
+# Prerequisites.
+simd_helpers = build_helpers.ExternalLibrary(libname='simd_helpers', find_headers=['simd_helpers.hpp'])
+cs.configure_external_library(simd_helpers)
 
 # Install .hpp header files.
 cs.install_cpp_headers(hpp_files)
 
 # C++ library
-cs.make_cpp_library(libname='rf_kernels', sources=cpp_core_files, install=True)
+cs.make_cpp_library(libname='rf_kernels', sources=cpp_core_files, sublibs=['simd_helpers'], install=True)
 
 # Unit tests.
 for cpp_filename in cpp_unit_tests:
