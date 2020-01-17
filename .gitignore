@@ -10,7 +10,7 @@ test-intensity-clipper
 test-mask-counter
 test-online-mask-filler
 test-polynomial-detrender
-test-quantize
+test-quantizer
 test-spline-detrender
 test-std-dev-clipper
 test-upsample
